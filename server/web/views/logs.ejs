@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>System Logs</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <nav class="navbar">
+        <a href="/" class="brand"><span class="fs-icon-sm">FS</span> Fason</a>
+        <div class="nav-links">
+            <a href="/">Dashboard</a>
+            <a href="/builder">Builder</a>
+            <a href="/logs" class="active">Logs</a>
+            <a href="/logout">Logout</a>
+        </div>
+    </nav>
+
+    <main class="container">
+        <div class="card logs-card">
+            <div class="card-header">
+                <h2>System Logs</h2>
+                <div class="actions">
+                    <button id="refreshBtn" class="btn secondary">↻ Refresh</button>
+                    <button id="clearBtn" class="btn danger">✕ Clear</button>
+                </div>
+            </div>
+            
+            <div class="logs-container">
+                <% if (logs.length === 0) { %>
+                    <div class="empty-state">
+                        <p>No logs yet</p>
+                    </div>
+                <% } else { %>
+                    <table class="logs-table">
+                        <thead>
+                            <tr>
+                                <th width="180">Time</th>
+                                <th width="100">Type</th>
+                                <th>Message</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <% logs.forEach(log => { %>
+                                <tr class="log-<%= log.type.toLowerCase() %>">
+                                    <td class="time"><%= new Date(log.time).toLocaleString() %></td>
+                                    <td class="type"><span class="badge <%= log.type.toLowerCase() %>"><%= log.type %></span></td>
+                                    <td class="message"><%= log.message %></td>
+                                </tr>
+                            <% }); %>
+                        </tbody>
+                    </table>
+                <% } %>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        document.getElementById('refreshBtn').onclick = () => location.reload();
+        
+        document.getElementById('clearBtn').onclick = async () => {
+            if (!confirm('Clear all logs?')) return;
+            
+            await fetch('/logs/clear', { method: 'POST' });
+            location.reload();
+        };
+    </script>
+</body>
+</html>

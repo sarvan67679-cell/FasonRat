@@ -1,0 +1,23 @@
+<div class="card">
+    <div class="card-header">
+        <h2>Notifications</h2>
+        <button class="btn" onclick="sendCmd('0xNO', {})">Refresh</button>
+    </div>
+    
+    <% if (!data.list || data.list.length === 0) { %>
+    <p class="empty">No notifications captured yet. Click Refresh to load.</p>
+    <% } else { %>
+    <div class="notif-list">
+        <% data.list.slice().reverse().forEach(n => { %>
+        <div class="notif-item">
+            <div class="notif-header">
+                <span class="notif-app"><%= n.appName %></span>
+                <span class="notif-time"><%= new Date(n.time).toLocaleString() %></span>
+            </div>
+            <div class="notif-title"><%= n.title %></div>
+            <div class="notif-content"><%= n.content %></div>
+        </div>
+        <% }) %>
+    </div>
+    <% } %>
+</div>

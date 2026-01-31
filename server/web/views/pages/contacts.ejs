@@ -1,0 +1,29 @@
+<div class="card">
+    <div class="card-header">
+        <h2>Contacts</h2>
+        <button class="btn" onclick="sendCmd('0xCO')">Refresh</button>
+    </div>
+    
+    <% if (!data.list || data.list.length === 0) { %>
+    <p class="empty">No contacts. Click Refresh to load.</p>
+    <% } else { %>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Phone</th>
+                </tr>
+            </thead>
+            <tbody>
+                <% data.list.forEach(c => { %>
+                <tr>
+                    <td><%= c.name %></td>
+                    <td><code><%= c.phoneNo %></code></td>
+                </tr>
+                <% }) %>
+            </tbody>
+        </table>
+    </div>
+    <% } %>
+</div>

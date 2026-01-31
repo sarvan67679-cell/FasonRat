@@ -1,0 +1,25 @@
+<div class="card">
+    <h2>Microphone Recording</h2>
+    <p>Record audio from the device microphone.</p>
+    
+    <div class="form-row">
+        <select id="mic-duration">
+            <option value="10">10 seconds</option>
+            <option value="30">30 seconds</option>
+            <option value="60" selected>1 minute</option>
+            <option value="120">2 minutes</option>
+            <option value="300">5 minutes</option>
+        </select>
+        <button class="btn primary" onclick="recordMic()">🎤 Start Recording</button>
+    </div>
+    
+    <p class="hint">Recording will be saved to Downloads when complete.</p>
+</div>
+
+<script>
+function recordMic() {
+    const sec = document.getElementById('mic-duration').value;
+    sendCmd('0xMI', {sec: parseInt(sec)});
+    toast(`Recording ${sec}s of audio...`, 'info');
+}
+</script>

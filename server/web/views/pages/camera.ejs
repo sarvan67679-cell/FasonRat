@@ -1,0 +1,51 @@
+<div class="card">
+    <div class="card-header">
+        <h2>Camera</h2>
+        <div class="btn-group">
+            <button class="btn" onclick="listCameras()">List Cameras</button>
+            <button class="btn secondary" onclick="location.reload()">↻ Refresh</button>
+        </div>
+    </div>
+    
+    <div class="camera-grid">
+        <% if (data.cameras && data.cameras.length > 0) { %>
+            <% data.cameras.forEach(cam => { %>
+            <button class="btn primary" onclick="capturePhoto(<%= cam.id %>)">
+                📷 Capture <%= cam.name %>
+            </button>
+            <% }) %>
+        <% } else { %>
+        <p class="empty">Click "List Cameras" to see available cameras, then Refresh.</p>
+        <% } %>
+    </div>
+</div>
+
+<div class="card">
+    <h2>Captured Photos</h2>
+    <% if (!data.photos || data.photos.length === 0) { %>
+    <p class="empty">No photos captured yet.</p>
+    <% } else { %>
+    <div class="photo-grid">
+        <% data.photos.forEach(p => { %>
+        <div class="photo-item">
+            <a href="<%= p.file %>" target="_blank">
+                <img src="<%= p.file %>" alt="<%= p.name %>">
+            </a>
+            <span class="photo-time"><%= new Date(p.time).toLocaleString() %></span>
+        </div>
+        <% }) %>
+    </div>
+    <% } %>
+</div>
+
+<script>
+function listCameras() {
+    sendCmdNoReload('0xCA', {action: 'list'});
+    toast('Fetching cameras... Click Refresh in 2-3 seconds.', 'info');
+}
+
+function capturePhoto(camId) {
+    sendCmdNoReload('0xCA', {action: 'capture', id: camId});
+    toast('Capturing photo... Click Refresh to see it.', 'info');
+}
+</script>

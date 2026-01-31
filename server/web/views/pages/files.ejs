@@ -1,0 +1,36 @@
+<div class="card">
+    <div class="card-header">
+        <h2>File Manager</h2>
+        <button class="btn" onclick="browseFiles('')">Go to Root</button>
+    </div>
+    
+    <% if (data.path) { %>
+    <div class="path-bar"><code><%= data.path %></code></div>
+    <% } %>
+    
+    <% if (!data.list || data.list.length === 0) { %>
+    <p class="empty">Click "Go to Root" to browse files.</p>
+    <% } else { %>
+    <div class="file-list">
+        <% data.list.forEach(f => { %>
+        <div class="file-item" onclick="<%= f.isDir ? `browseFiles('${f.path}')` : `downloadFile('${f.path}')` %>">
+            <span class="file-icon"><%= f.isDir ? '📁' : '📄' %></span>
+            <span class="file-name"><%= f.name %></span>
+        </div>
+        <% }) %>
+    </div>
+    <% } %>
+</div>
+
+<script>
+function browseFiles(path) {
+    sendCmd('0xFI', {action: 'ls', path: path || ''});
+}
+
+function downloadFile(path) {
+    if (confirm('Download this file?')) {
+        sendCmd('0xFI', {action: 'dl', path});
+        toast('Download requested...', 'info');
+    }
+}
+</script>

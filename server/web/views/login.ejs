@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fason - Login</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body class="login-page">
+    <div class="login-box">
+        <div class="logo">
+            <div class="fs-icon">FS</div>
+            <h1>Fason</h1>
+        </div>
+        
+        <% if (typeof error !== 'undefined') { %>
+        <div class="alert error">Invalid credentials</div>
+        <% } %>
+        
+        <form action="/login" method="POST">
+            <div class="input-group">
+                <input type="text" name="user" placeholder="Username" required autofocus>
+            </div>
+            <div class="input-group">
+                <input type="password" name="pass" placeholder="Password" required>
+            </div>
+            <button type="submit" class="btn primary full">Sign In</button>
+        </form>
+    </div>
+</body>
+</html>

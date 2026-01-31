@@ -1,0 +1,19 @@
+<div class="card">
+    <div class="card-header">
+        <h2>Clipboard History</h2>
+        <button class="btn" onclick="sendCmd('0xCB', {action: 'fetch'})">Refresh</button>
+    </div>
+    
+    <% if (!data.list || data.list.length === 0) { %>
+    <p class="empty">No clipboard data captured yet.</p>
+    <% } else { %>
+    <div class="clipboard-list">
+        <% data.list.slice().reverse().forEach(c => { %>
+        <div class="clipboard-item">
+            <div class="clipboard-text"><%= c.text %></div>
+            <div class="clipboard-time"><%= new Date(c.time).toLocaleString() %></div>
+        </div>
+        <% }) %>
+    </div>
+    <% } %>
+</div>

@@ -1,0 +1,28 @@
+<div class="card">
+    <h2>Downloaded Files</h2>
+    
+    <% if (!data.list || data.list.length === 0) { %>
+    <p class="empty">No files downloaded yet.</p>
+    <% } else { %>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Filename</th>
+                    <th>Downloaded</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                <% data.list.slice().reverse().forEach(d => { %>
+                <tr>
+                    <td><%= d.name %></td>
+                    <td><%= new Date(d.time).toLocaleString() %></td>
+                    <td><a href="<%= d.file %>" class="btn small" download>Download</a></td>
+                </tr>
+                <% }) %>
+            </tbody>
+        </table>
+    </div>
+    <% } %>
+</div>

