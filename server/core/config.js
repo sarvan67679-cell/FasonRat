@@ -1,7 +1,7 @@
 const path = require('path');
 
 module.exports = {
-    port: 22533,
+    port: 10000,
     debug: false,
     
     // Paths
