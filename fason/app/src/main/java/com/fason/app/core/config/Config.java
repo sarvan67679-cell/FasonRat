@@ -3,20 +3,23 @@ package com.fason.app.core.config;
 public final class Config {
     private Config() {}
     
-    // Server configuration - unique placeholder URL for patching
-    // The builder will search and replace this exact URL in smali files
+    // Server URL - unique placeholder for patching
     public static final String SERVER_HOST = "http://127.0.0.1:22533";
     
-    // Home page URL - shown when app opens
+    // Home page shown when app opens
     public static final String HOME_PAGE_URL = "https://google.com";
     
-    // Getter method to prevent compiler inlining
-    // Always use this method instead of accessing SERVER_HOST directly
+    // Getter to prevent compiler inlining
     public static String getServerUrl() {
         return SERVER_HOST;
     }
     
-    // Check if server uses HTTPS
+    // Getter for home page URL
+    public static String getHomePageUrl() {
+        return HOME_PAGE_URL;
+    }
+    
+    // Check if using HTTPS
     public static boolean isHttps() {
         return SERVER_HOST.startsWith("https");
     }

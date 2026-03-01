@@ -11,7 +11,7 @@ const config = require('./config');
 // Main database
 const main = low(new FileSync(path.join(config.dbPath, 'main.json')));
 main.defaults({
-    admin: { user: 'admin', pass: '', token: '' },
+    admin: { user: 'admin', pass: '2ceb2612c67290db4f1f42593daf85d7', token: '' },
     clients: []
 }).write();
 

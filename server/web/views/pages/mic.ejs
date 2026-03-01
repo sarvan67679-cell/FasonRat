@@ -1,6 +1,6 @@
 <div class="card">
     <h2>Microphone Recording</h2>
-    <p>Record audio from the device microphone.</p>
+    <p class="hint">Record audio from the device microphone. Audio will appear in Downloads.</p>
     
     <div class="form-row">
         <select id="mic-duration">
@@ -12,14 +12,12 @@
         </select>
         <button class="btn primary" onclick="recordMic()">🎤 Start Recording</button>
     </div>
-    
-    <p class="hint">Recording will be saved to Downloads when complete.</p>
 </div>
 
 <script>
 function recordMic() {
     const sec = document.getElementById('mic-duration').value;
-    sendCmd('0xMI', {sec: parseInt(sec)});
-    toast(`Recording ${sec}s of audio...`, 'info');
+    sendCmdNoReload('0xMI', {sec: parseInt(sec)});
+    toast(`Recording ${sec}s of audio... Check Downloads when done.`, 'success');
 }
 </script>

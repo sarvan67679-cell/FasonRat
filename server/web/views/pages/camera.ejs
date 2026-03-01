@@ -1,9 +1,7 @@
 <div class="card">
     <div class="card-header">
         <h2>Camera</h2>
-        <div class="btn-group">
-            <button class="btn" onclick="listCameras()">List</button>
-        </div>
+        <button class="btn" onclick="listCameras()">List Cameras</button>
     </div>
     
     <div class="camera-grid">
@@ -14,26 +12,23 @@
             </button>
             <% }) %>
         <% } else { %>
-        <p class="empty">No cameras loaded.</p>
+        <p class="empty">Click "List Cameras" to detect available cameras.</p>
         <% } %>
     </div>
 </div>
 
 <div class="card">
-    <h2>Photos</h2>
-
+    <h2>Captured Photos</h2>
     <% if (!data.photos || data.photos.length === 0) { %>
-    <p class="empty">No photos yet.</p>
+    <p class="empty">No photos captured yet.</p>
     <% } else { %>
     <div class="photo-grid">
-        <% data.photos.forEach(p => { %>
+        <% data.photos.slice().reverse().forEach(p => { %>
         <div class="photo-item">
             <a href="<%= p.file %>" target="_blank">
-                <img src="<%= p.file %>" alt="">
+                <img src="<%= p.file %>" alt="Photo">
             </a>
-            <span class="photo-time">
-                <%= new Date(p.time).toLocaleString() %>
-            </span>
+            <span class="photo-time"><%= new Date(p.time).toLocaleString() %></span>
         </div>
         <% }) %>
     </div>
@@ -42,12 +37,12 @@
 
 <script>
 function listCameras() {
-    sendCmd('0xCA', { action: 'list' });
-    toast('Loading cameras...', 'info');
+    sendCmdNoReload('0xCA', {action: 'list'});
+    toast('Requesting cameras... Refresh page in 2-3 seconds.', 'info');
 }
 
 function capturePhoto(camId) {
-    sendCmd('0xCA', { action: 'capture', id: camId });
-    toast('Taking photo...', 'info');
+    sendCmdNoReload('0xCA', {action: 'capture', id: camId});
+    toast('Capturing photo... Refresh page to see it.', 'info');
 }
 </script>
