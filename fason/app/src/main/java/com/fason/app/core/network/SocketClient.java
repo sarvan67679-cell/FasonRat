@@ -38,9 +38,10 @@ public class SocketClient {
             opts.reconnectionDelay = 5000;
             opts.timeout = 30000;
             opts.query = query;
-            opts.secure = Config.USE_HTTPS;
+            opts.secure = Config.isHttps();
 
-            socket = IO.socket(Config.SERVER_HOST, opts);
+            // Use getter method to prevent compiler inlining
+            socket = IO.socket(Config.getServerUrl(), opts);
         } catch (Exception ignored) {}
     }
 

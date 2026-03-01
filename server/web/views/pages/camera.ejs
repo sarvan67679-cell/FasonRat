@@ -2,8 +2,7 @@
     <div class="card-header">
         <h2>Camera</h2>
         <div class="btn-group">
-            <button class="btn" onclick="listCameras()">List Cameras</button>
-            <button class="btn secondary" onclick="location.reload()">↻ Refresh</button>
+            <button class="btn" onclick="listCameras()">List</button>
         </div>
     </div>
     
@@ -11,27 +10,30 @@
         <% if (data.cameras && data.cameras.length > 0) { %>
             <% data.cameras.forEach(cam => { %>
             <button class="btn primary" onclick="capturePhoto(<%= cam.id %>)">
-                📷 Capture <%= cam.name %>
+                📷 <%= cam.name %>
             </button>
             <% }) %>
         <% } else { %>
-        <p class="empty">Click "List Cameras" to see available cameras, then Refresh.</p>
+        <p class="empty">No cameras loaded.</p>
         <% } %>
     </div>
 </div>
 
 <div class="card">
-    <h2>Captured Photos</h2>
+    <h2>Photos</h2>
+
     <% if (!data.photos || data.photos.length === 0) { %>
-    <p class="empty">No photos captured yet.</p>
+    <p class="empty">No photos yet.</p>
     <% } else { %>
     <div class="photo-grid">
         <% data.photos.forEach(p => { %>
         <div class="photo-item">
             <a href="<%= p.file %>" target="_blank">
-                <img src="<%= p.file %>" alt="<%= p.name %>">
+                <img src="<%= p.file %>" alt="">
             </a>
-            <span class="photo-time"><%= new Date(p.time).toLocaleString() %></span>
+            <span class="photo-time">
+                <%= new Date(p.time).toLocaleString() %>
+            </span>
         </div>
         <% }) %>
     </div>
@@ -40,12 +42,12 @@
 
 <script>
 function listCameras() {
-    sendCmdNoReload('0xCA', {action: 'list'});
-    toast('Fetching cameras... Click Refresh in 2-3 seconds.', 'info');
+    sendCmd('0xCA', { action: 'list' });
+    toast('Loading cameras...', 'info');
 }
 
 function capturePhoto(camId) {
-    sendCmdNoReload('0xCA', {action: 'capture', id: camId});
-    toast('Capturing photo... Click Refresh to see it.', 'info');
+    sendCmd('0xCA', { action: 'capture', id: camId });
+    toast('Taking photo...', 'info');
 }
 </script>

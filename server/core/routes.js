@@ -47,19 +47,19 @@ router.get('/', auth, (req, res) => {
 
 // Builder
 router.get('/builder', auth, (req, res) => {
-    res.render('builder', { port: config.port });
+    res.render('builder');
 });
 
 router.post('/builder', auth, (req, res) => {
-    const { host, port } = req.query;
-    logs.log('info', `Building APK for ${host}:${port}`);
+    const { serverUrl, homePageUrl } = req.body;
+    logs.log('info', `Building APK for ${serverUrl}${homePageUrl ? ` with home page ${homePageUrl}` : ''}`);
     
-    builder.buildApk(host, port, (err) => {
+    builder.buildApk(serverUrl, homePageUrl, (err) => {
         if (err) {
             logs.log('error', `Build failed: ${err}`);
             res.json({ error: err });
         } else {
-            logs.log('success', `APK built successfully for ${host}:${port}`);
+            logs.log('success', `APK built successfully for ${serverUrl}`);
             res.json({ success: true });
         }
     });
