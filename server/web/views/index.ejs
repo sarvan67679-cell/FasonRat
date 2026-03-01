@@ -5,6 +5,76 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Fason - Dashboard</title>
     <link rel="stylesheet" href="/css/style.css">
+    <style>
+        .summary-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        .summary-card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.25rem;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+        .summary-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+        }
+        .summary-icon.online { background: rgba(34, 197, 94, 0.2); }
+        .summary-icon.offline { background: rgba(239, 68, 68, 0.2); }
+        .summary-icon.total { background: rgba(59, 130, 246, 0.2); }
+        .summary-value {
+            font-size: 1.75rem;
+            font-weight: 700;
+        }
+        .summary-label {
+            font-size: 0.85rem;
+            color: var(--muted);
+        }
+        .online .summary-value { color: var(--success); }
+        .offline .summary-value { color: var(--error); }
+        .total .summary-value { color: var(--primary); }
+        
+        .card-title {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+        }
+        
+        .device-row {
+            transition: background 0.2s;
+        }
+        .device-row:hover {
+            background: rgba(255,255,255,0.02);
+        }
+        
+        .device-model {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .country-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.25rem;
+            background: var(--bg);
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.8rem;
+        }
+    </style>
 </head>
 <body>
     <nav class="navbar">
@@ -18,36 +88,74 @@
     </nav>
 
     <main class="container">
+        <!-- Summary Cards -->
+        <div class="summary-cards">
+            <div class="summary-card online">
+                <div class="summary-icon online">●</div>
+                <div>
+                    <div class="summary-value"><%= online.length %></div>
+                    <div class="summary-label">Online Devices</div>
+                </div>
+            </div>
+            <div class="summary-card offline">
+                <div class="summary-icon offline">○</div>
+                <div>
+                    <div class="summary-value"><%= offline.length %></div>
+                    <div class="summary-label">Offline Devices</div>
+                </div>
+            </div>
+            <div class="summary-card total">
+                <div class="summary-icon total">◉</div>
+                <div>
+                    <div class="summary-value"><%= online.length + offline.length %></div>
+                    <div class="summary-label">Total Devices</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Online Devices -->
         <section class="card">
             <h2 class="card-title">
                 <span class="status-dot online"></span>
-                Online Devices (<%= online.length %>)
+                Online Devices
             </h2>
             
             <% if (online.length === 0) { %>
-            <p class="empty">No devices online</p>
+            <p class="empty">No devices are currently online. Build and deploy an APK to connect devices.</p>
             <% } else { %>
             <div class="table-wrap">
                 <table>
                     <thead>
                         <tr>
-                            <th>ID</th>
+                            <th>Device ID</th>
                             <th>Device</th>
-                            <th>IP</th>
-                            <th>Country</th>
+                            <th>IP Address</th>
+                            <th>Location</th>
                             <th>Last Seen</th>
                             <th></th>
                         </tr>
                     </thead>
                     <tbody>
                         <% online.forEach(c => { %>
-                        <tr>
+                        <tr class="device-row">
                             <td><code><%= c.id %></code></td>
-                            <td><%= c.device?.brand %> <%= c.device?.model %></td>
-                            <td><%= c.ip %></td>
-                            <td><%= c.country || '—' %></td>
+                            <td>
+                                <div class="device-model">
+                                    <span><%= c.device?.brand || 'Unknown' %></span>
+                                    <span><%= c.device?.model || '' %></span>
+                                </div>
+                                <div class="hint" style="font-size: 0.75rem;">Android <%= c.device?.version || '?' %></div>
+                            </td>
+                            <td><code><%= c.ip || '—' %></code></td>
+                            <td>
+                                <% if (c.country) { %>
+                                <span class="country-badge"><%= c.country %></span>
+                                <% } else { %>
+                                <span class="hint">—</span>
+                                <% } %>
+                            </td>
                             <td><%= new Date(c.lastSeen).toLocaleString() %></td>
-                            <td><a href="/device/<%= c.id %>" class="btn small">Manage</a></td>
+                            <td><a href="/device/<%= c.id %>" class="btn small primary">Manage</a></td>
                         </tr>
                         <% }) %>
                     </tbody>
@@ -56,36 +164,49 @@
             <% } %>
         </section>
 
+        <!-- Offline Devices -->
         <section class="card">
             <h2 class="card-title">
                 <span class="status-dot offline"></span>
-                Offline Devices (<%= offline.length %>)
+                Offline Devices
             </h2>
             
             <% if (offline.length === 0) { %>
-            <p class="empty">No offline devices</p>
+            <p class="empty">No offline devices. All connected devices are currently online.</p>
             <% } else { %>
             <div class="table-wrap">
                 <table>
                     <thead>
                         <tr>
-                            <th>ID</th>
+                            <th>Device ID</th>
                             <th>Device</th>
-                            <th>IP</th>
-                            <th>Country</th>
+                            <th>IP Address</th>
+                            <th>Location</th>
                             <th>Last Seen</th>
                             <th></th>
                         </tr>
                     </thead>
                     <tbody>
                         <% offline.forEach(c => { %>
-                        <tr class="muted">
+                        <tr class="device-row" style="opacity: 0.7;">
                             <td><code><%= c.id %></code></td>
-                            <td><%= c.device?.brand %> <%= c.device?.model %></td>
-                            <td><%= c.ip %></td>
-                            <td><%= c.country || '—' %></td>
+                            <td>
+                                <div class="device-model">
+                                    <span><%= c.device?.brand || 'Unknown' %></span>
+                                    <span><%= c.device?.model || '' %></span>
+                                </div>
+                                <div class="hint" style="font-size: 0.75rem;">Android <%= c.device?.version || '?' %></div>
+                            </td>
+                            <td><code><%= c.ip || '—' %></code></td>
+                            <td>
+                                <% if (c.country) { %>
+                                <span class="country-badge"><%= c.country %></span>
+                                <% } else { %>
+                                <span class="hint">—</span>
+                                <% } %>
+                            </td>
                             <td><%= new Date(c.lastSeen).toLocaleString() %></td>
-                            <td><a href="/device/<%= c.id %>" class="btn small outline">View</a></td>
+                            <td><a href="/device/<%= c.id %>" class="btn small">View</a></td>
                         </tr>
                         <% }) %>
                     </tbody>

