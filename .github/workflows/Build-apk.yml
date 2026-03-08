@@ -3,13 +3,21 @@ name: Build Base APK
 on:
   workflow_dispatch:
     inputs:
+      build_type:
+        description: "Build type"
+        required: true
+        default: "debug"
+        type: choice
+        options:
+          - debug
+          - release
       commit_to_repo:
         description: "Commit generated APK to repository"
         required: false
         default: true
         type: boolean
 
-# Setup permission 
+# Setup permission
 permissions:
   contents: write
 
@@ -39,16 +47,24 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x fason/gradlew
 
-      # Build Debug APK
-      - name: Build Debug APK
+      # Build APK
+      - name: Build APK
         run: |
           cd fason
-          ./gradlew assembleDebug --no-daemon
+          if [ "${{ github.event.inputs.build_type }}" = "release" ]; then
+            ./gradlew assembleRelease --no-daemon
+          else
+            ./gradlew assembleDebug --no-daemon
+          fi
 
       # Verify APK exists
       - name: Verify APK
         run: |
-          APK_PATH="fason/app/build/outputs/apk/debug/app-debug.apk"
+          if [ "${{ github.event.inputs.build_type }}" = "release" ]; then
+            APK_PATH="fason/app/build/outputs/apk/release/app-release.apk"
+          else
+            APK_PATH="fason/app/build/outputs/apk/debug/app-debug.apk"
+          fi
 
           if [ ! -f "$APK_PATH" ]; then
             echo "❌ APK build failed."
@@ -58,22 +74,22 @@ jobs:
           echo "✅ APK built successfully."
           APK_SIZE=$(du -h "$APK_PATH" | cut -f1)
           echo "APK_SIZE=$APK_SIZE" >> $GITHUB_ENV
+          echo "APK_PATH=$APK_PATH" >> $GITHUB_ENV
 
       # Upload APK as artifact
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: fason-base-apk
-          path: fason/app/build/outputs/apk/debug/app-debug.apk
+          name: Fason-${{ github.event.inputs.build_type }}-apk
+          path: ${{ env.APK_PATH }}
           retention-days: 30
 
       # Optional: Commit APK to repository
       - name: Commit APK to repository
         if: ${{ github.event.inputs.commit_to_repo }}
         run: |
-          APK_PATH="fason/app/build/outputs/apk/debug/app-debug.apk"
           TARGET_DIR="server/app/factory/rawapk"
-          TARGET_PATH="$TARGET_DIR/app-debug.apk"
+          TARGET_PATH="$TARGET_DIR/Fason.apk"
 
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -85,7 +101,7 @@ jobs:
             echo "No changes detected. Skipping commit."
           else
             git add "$TARGET_PATH"
-            git commit -m "chore: update base APK [skip ci]"
+            git commit -m "chore: update Fason.apk (${{ github.event.inputs.build_type }}) [skip ci]"
             git push origin HEAD:${{ github.ref }}
             echo "✅ APK committed successfully."
           fi
@@ -96,7 +112,8 @@ jobs:
           echo "## 📦 APK Build Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "✅ **Status:** Success" >> $GITHUB_STEP_SUMMARY
+          echo "- **Build Type:** ${{ github.event.inputs.build_type }}" >> $GITHUB_STEP_SUMMARY
           echo "- **APK Size:** $APK_SIZE" >> $GITHUB_STEP_SUMMARY
-          echo "- **Artifact Name:** fason-base-apk" >> $GITHUB_STEP_SUMMARY
+          echo "- **Artifact Name:** Fason-${{ github.event.inputs.build_type }}-apk" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Download the APK from the **Artifacts** section of this workflow run." >> $GITHUB_STEP_SUMMARY

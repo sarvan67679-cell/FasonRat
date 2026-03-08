@@ -5,76 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Fason - Dashboard</title>
     <link rel="stylesheet" href="/css/style.css">
-    <style>
-        .summary-cards {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-            gap: 1rem;
-            margin-bottom: 2rem;
-        }
-        .summary-card {
-            background: var(--card);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 1.25rem;
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-        }
-        .summary-icon {
-            width: 48px;
-            height: 48px;
-            border-radius: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.5rem;
-        }
-        .summary-icon.online { background: rgba(34, 197, 94, 0.2); }
-        .summary-icon.offline { background: rgba(239, 68, 68, 0.2); }
-        .summary-icon.total { background: rgba(59, 130, 246, 0.2); }
-        .summary-value {
-            font-size: 1.75rem;
-            font-weight: 700;
-        }
-        .summary-label {
-            font-size: 0.85rem;
-            color: var(--muted);
-        }
-        .online .summary-value { color: var(--success); }
-        .offline .summary-value { color: var(--error); }
-        .total .summary-value { color: var(--primary); }
-        
-        .card-title {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            margin-bottom: 1rem;
-        }
-        
-        .device-row {
-            transition: background 0.2s;
-        }
-        .device-row:hover {
-            background: rgba(255,255,255,0.02);
-        }
-        
-        .device-model {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-        
-        .country-badge {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.25rem;
-            background: var(--bg);
-            padding: 0.2rem 0.5rem;
-            border-radius: 4px;
-            font-size: 0.8rem;
-        }
-    </style>
 </head>
 <body>
     <nav class="navbar">
@@ -216,6 +146,7 @@
         </section>
     </main>
 
+    <div id="toast" class="toast"></div>
     <script src="/js/app.js"></script>
 </body>
 </html>

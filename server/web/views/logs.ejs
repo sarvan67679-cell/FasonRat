@@ -5,92 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>System Logs - Fason</title>
     <link rel="stylesheet" href="/css/style.css">
-    <style>
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-            gap: 1rem;
-            margin-bottom: 1.5rem;
-        }
-        .stat-card {
-            background: var(--bg);
-            border-radius: 8px;
-            padding: 1rem;
-            text-align: center;
-        }
-        .stat-value {
-            font-size: 1.75rem;
-            font-weight: 700;
-            color: var(--primary);
-        }
-        .stat-label {
-            font-size: 0.75rem;
-            color: var(--muted);
-            margin-top: 0.25rem;
-        }
-        .stat-card.error .stat-value { color: var(--error); }
-        .stat-card.warning .stat-value { color: var(--warning); }
-        .stat-card.success .stat-value { color: var(--success); }
-        
-        .filter-bar {
-            display: flex;
-            gap: 0.75rem;
-            flex-wrap: wrap;
-            margin-bottom: 1rem;
-        }
-        .filter-bar select, .filter-bar input {
-            background: var(--bg);
-            border: 1px solid var(--border);
-            padding: 0.5rem 0.75rem;
-            border-radius: 6px;
-            color: var(--text);
-            font-size: 0.9rem;
-        }
-        .filter-bar input { flex: 1; min-width: 200px; }
-        
-        .log-row { transition: background 0.2s; }
-        .log-row:hover { background: rgba(255,255,255,0.02); }
-        
-        .log-row.log-error { border-left: 3px solid var(--error); }
-        .log-row.log-warning { border-left: 3px solid var(--warning); }
-        .log-row.log-success { border-left: 3px solid var(--success); }
-        .log-row.log-connection { border-left: 3px solid #8b5cf6; }
-        .log-row.log-disconnection { border-left: 3px solid #f97316; }
-        .log-row.log-command { border-left: 3px solid #06b6d4; }
-        .log-row.log-data { border-left: 3px solid #10b981; }
-        .log-row.log-build { border-left: 3px solid #a855f7; }
-        .log-row.log-auth { border-left: 3px solid #ec4899; }
-        .log-row.log-file { border-left: 3px solid #6366f1; }
-        
-        .type-badge {
-            display: inline-block;
-            padding: 2px 8px;
-            border-radius: 4px;
-            font-size: 11px;
-            font-weight: 600;
-            text-transform: uppercase;
-        }
-        .type-badge.info { background: rgba(59, 130, 246, 0.2); color: #3b82f6; }
-        .type-badge.success { background: rgba(34, 197, 94, 0.2); color: #22c55e; }
-        .type-badge.error { background: rgba(239, 68, 68, 0.2); color: #ef4444; }
-        .type-badge.warning { background: rgba(245, 158, 11, 0.2); color: #f59e0b; }
-        .type-badge.connection { background: rgba(139, 92, 246, 0.2); color: #8b5cf6; }
-        .type-badge.disconnection { background: rgba(249, 115, 22, 0.2); color: #f97316; }
-        .type-badge.command { background: rgba(6, 182, 212, 0.2); color: #06b6d4; }
-        .type-badge.data { background: rgba(16, 185, 129, 0.2); color: #10b981; }
-        .type-badge.build { background: rgba(168, 85, 247, 0.2); color: #a855f7; }
-        .type-badge.auth { background: rgba(236, 72, 153, 0.2); color: #ec4899; }
-        .type-badge.file { background: rgba(99, 102, 241, 0.2); color: #6366f1; }
-        
-        .category-tag {
-            font-size: 10px;
-            padding: 1px 6px;
-            border-radius: 3px;
-            background: var(--card-alt);
-            color: var(--muted);
-            margin-left: 6px;
-        }
-    </style>
 </head>
 <body>
     <nav class="navbar">
@@ -204,33 +118,6 @@
     </main>
 
     <div id="toast" class="toast"></div>
-    <script>
-        document.getElementById('refreshBtn').onclick = () => location.reload();
-        
-        document.getElementById('clearBtn').onclick = async () => {
-            if (!confirm('Are you sure you want to clear all logs? This cannot be undone.')) return;
-            
-            try {
-                const res = await fetch('/logs/clear', { method: 'POST' });
-                const data = await res.json();
-                if (data.success) {
-                    toast('Logs cleared', 'success');
-                    setTimeout(() => location.reload(), 500);
-                } else {
-                    toast(data.error || 'Failed to clear logs', 'error');
-                }
-            } catch (e) {
-                toast('Request failed', 'error');
-            }
-        };
-        
-        function toast(msg, type = 'info') {
-            const t = document.getElementById('toast');
-            if (!t) return;
-            t.textContent = msg;
-            t.className = 'toast show ' + type;
-            setTimeout(() => { t.className = 'toast'; }, 2500);
-        }
-    </script>
+    <script src="/js/app.js"></script>
 </body>
 </html>

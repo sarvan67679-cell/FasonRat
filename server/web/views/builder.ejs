@@ -5,124 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>APK Builder</title>
     <link rel="stylesheet" href="/css/style.css">
-    <style>
-        .url-info {
-            background: var(--card-secondary, #1e2a3a);
-            border-radius: 8px;
-            padding: 12px 16px;
-            margin-top: 10px;
-            font-size: 13px;
-        }
-        .url-info .label {
-            color: var(--text-muted, #888);
-            margin-bottom: 4px;
-        }
-        .url-info .value {
-            color: var(--accent, #4CAF50);
-            font-family: monospace;
-            word-break: break-all;
-        }
-        .url-info .row {
-            display: flex;
-            gap: 20px;
-            flex-wrap: wrap;
-        }
-        .url-info .col {
-            flex: 1;
-            min-width: 120px;
-        }
-        .auto-detect-btn {
-            background: var(--secondary, #2196F3);
-            color: white;
-            border: none;
-            padding: 8px 16px;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 13px;
-            margin-left: 10px;
-            transition: background 0.2s;
-        }
-        .auto-detect-btn:hover {
-            background: var(--secondary-dark, #1976D2);
-        }
-        .input-group {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        .input-group input {
-            flex: 1;
-        }
-        .status-badge {
-            display: inline-block;
-            padding: 2px 8px;
-            border-radius: 4px;
-            font-size: 11px;
-            font-weight: 600;
-        }
-        .status-badge.http {
-            background: #ff9800;
-            color: #000;
-        }
-        .status-badge.https {
-            background: #4CAF50;
-            color: #fff;
-        }
-        .section-divider {
-            border-top: 1px solid var(--border, #333);
-            margin: 20px 0;
-            padding-top: 20px;
-        }
-        .section-title {
-            font-size: 14px;
-            color: var(--text-muted, #888);
-            margin-bottom: 15px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        .section-title::before {
-            content: '';
-            display: inline-block;
-            width: 4px;
-            height: 14px;
-            background: var(--accent, #4CAF50);
-            border-radius: 2px;
-        }
-        .optional-tag {
-            background: var(--card-secondary, #1e2a3a);
-            color: var(--text-muted, #888);
-            padding: 2px 8px;
-            border-radius: 4px;
-            font-size: 11px;
-            margin-left: 8px;
-        }
-        .hint-text {
-            font-size: 12px;
-            color: var(--text-muted, #888);
-            margin-top: 6px;
-        }
-        .section-title.collapsible {
-            cursor: pointer;
-            user-select: none;
-            transition: all 0.2s;
-        }
-        .section-title.collapsible:hover {
-            color: var(--accent, #4CAF50);
-        }
-        .toggle-icon {
-            display: inline-block;
-            width: 16px;
-            transition: transform 0.2s;
-        }
-        .collapsible-content {
-            animation: fadeIn 0.3s ease;
-        }
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(-10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-    </style>
 </head>
 <body>
     <nav class="navbar">
@@ -145,8 +27,8 @@
             
             <div class="form-group">
                 <label for="serverUrl">Server URL <span class="required">*</span></label>
-                <div class="input-group">
-                    <input type="text" id="serverUrl" placeholder="e.g., http://192.168.1.100:22533 or https://example.com" autocomplete="off">
+                <div class="input-group-flex">
+                    <input type="text" id="serverUrl" placeholder="https://example.com" autocomplete="off">
                     <button class="auto-detect-btn" id="autoDetectBtn">Auto Detect</button>
                 </div>
                 <div id="urlInfo" class="url-info hidden">
@@ -169,7 +51,7 @@
             
             <!-- Home Page URL Section -->
             <div class="section-divider"></div>
-            <div class="section-title collapsible" onclick="toggleCustomise()">
+            <div class="section-title collapsible" onclick="toggleSection('customiseSection')">
                 <span class="toggle-icon">▶</span> App Appearance <span class="optional-tag">Optional</span>
             </div>
             <div id="customiseSection" class="collapsible-content" style="display: none;">
@@ -178,26 +60,12 @@
                     <input
                         type="text"
                         id="homePageUrl"
-                        placeholder="https://google.com"
+                        placeholder="https://example.com"
                         value="https://google.com"
                         autocomplete="off"
                     >
                 </div>
             </div>
-            
-            <script>
-            function toggleCustomise() {
-                const section = document.getElementById('customiseSection');
-                const icon = document.querySelector('.toggle-icon');
-                if (section.style.display === 'none') {
-                    section.style.display = 'block';
-                    icon.textContent = '▼';
-                } else {
-                    section.style.display = 'none';
-                    icon.textContent = '▶';
-                }
-            }
-            </script>
             
             <button id="buildBtn" class="btn primary">
                 <span class="icon">⚙</span> Build APK
@@ -213,7 +81,7 @@
             <div id="result" class="result-section hidden">
                 <div class="success-icon">✓</div>
                 <p>APK Built Successfully!</p>
-                <a href="/build.s.apk" class="btn success" download>
+                <a href="/Fason.apk" class="btn success" download>
                     <span class="icon">↓</span> Download APK
                 </a>
             </div>
@@ -241,129 +109,7 @@
         </div>
     </main>
 
-    <script>
-        const $ = id => document.getElementById(id);
-        const buildBtn = $('buildBtn');
-        const autoDetectBtn = $('autoDetectBtn');
-        const serverUrlInput = $('serverUrl');
-        const homePageUrlInput = $('homePageUrl');
-        const urlInfo = $('urlInfo');
-        const progress = $('progress');
-        const progressFill = $('progressFill');
-        const progressText = $('progressText');
-        const result = $('result');
-        const error = $('error');
-        const errorText = $('errorText');
-        
-        let polling = null;
-        
-        function parseAndDisplayUrl(url) {
-            if (!url) {
-                urlInfo.classList.add('hidden');
-                return null;
-            }
-            try {
-                let parsedUrl = url;
-                if (!url.startsWith('http://') && !url.startsWith('https://')) {
-                    parsedUrl = 'http://' + url;
-                }
-                const urlObj = new URL(parsedUrl);
-                const protocol = urlObj.protocol.replace(':', '');
-                const host = urlObj.hostname;
-                const port = urlObj.port || (protocol === 'https' ? '443' : '80');
-                
-                $('protocolValue').innerHTML = `<span class="status-badge ${protocol}">${protocol.toUpperCase()}</span>`;
-                $('hostValue').textContent = host;
-                $('portValue').textContent = port;
-                urlInfo.classList.remove('hidden');
-                
-                return { protocol, host, port: parseInt(port) };
-            } catch (e) {
-                urlInfo.classList.add('hidden');
-                return null;
-            }
-        }
-        
-        function autoDetectUrl() {
-            const currentUrl = window.location.origin;
-            serverUrlInput.value = currentUrl;
-            parseAndDisplayUrl(currentUrl);
-        }
-        
-        serverUrlInput.addEventListener('input', (e) => {
-            parseAndDisplayUrl(e.target.value);
-        });
-        
-        autoDetectBtn.onclick = autoDetectUrl;
-        autoDetectUrl();
-        
-        buildBtn.onclick = async () => {
-            const serverUrl = serverUrlInput.value.trim();
-            const homePageUrl = homePageUrlInput.value.trim();
-            
-            if (!serverUrl) {
-                alert('Please enter server URL');
-                return;
-            }
-            
-            const parsed = parseAndDisplayUrl(serverUrl);
-            if (!parsed) {
-                alert('Invalid server URL format');
-                return;
-            }
-            
-            buildBtn.disabled = true;
-            buildBtn.innerHTML = '<span class="icon">⏳</span> Building...';
-            progress.classList.remove('hidden');
-            result.classList.add('hidden');
-            error.classList.add('hidden');
-            progressFill.style.width = '0%';
-            progressFill.style.background = '';
-            
-            polling = setInterval(async () => {
-                try {
-                    const res = await fetch('/builder/progress');
-                    const data = await res.json();
-                    const p = data.progress;
-                    let pct = 0;
-                    if (p.step === 'java') pct = 5;
-                    else if (p.step === 'decompile') pct = 20;
-                    else if (p.step === 'patch') pct = 45;
-                    else if (p.step === 'build') pct = 70;
-                    else if (p.step === 'sign') pct = 90;
-                    else if (p.step === 'done') pct = 100;
-                    progressFill.style.width = pct + '%';
-                    progressText.textContent = p.message || 'Processing...';
-                } catch (e) {}
-            }, 500);
-            
-            try {
-                const res = await fetch(`/builder`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ serverUrl, homePageUrl })
-                });
-                const data = await res.json();
-                clearInterval(polling);
-                if (data.error) {
-                    progressFill.style.width = '100%';
-                    progressFill.style.background = 'var(--danger)';
-                    error.classList.remove('hidden');
-                    errorText.textContent = data.error;
-                } else {
-                    progressFill.style.width = '100%';
-                    progress.classList.add('hidden');
-                    result.classList.remove('hidden');
-                }
-            } catch (e) {
-                clearInterval(polling);
-                error.classList.remove('hidden');
-                errorText.textContent = e.message;
-            }
-            
-            buildBtn.disabled = false;
-            buildBtn.innerHTML = '<span class="icon">⚙</span> Build APK';
-        };
-    </script>
+    <div id="toast" class="toast"></div>
+    <script src="/js/app.js"></script>
 </body>
 </html>

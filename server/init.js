@@ -3,11 +3,12 @@ const http = require('http');
 const path = require('path');
 const cookieParser = require('cookie-parser');
 
-const config = require('./core/config');
-const routes = require('./core/routes');
-const initSocket = require('./core/socket');
-const { logger } = require('./core/logs');
-const taskManager = require('./core/tasks');
+const config = require('./core/config/config');
+const routes = require('./core/routes/routes');
+const initSocket = require('./core/socket/socket');
+const { logger } = require('./core/logs/logs');
+const taskManager = require('./core/utils/tasks');
+const { initDefaultUser } = require('./core/auth/auth');
 
 // Startup message
 console.log(`
@@ -21,6 +22,9 @@ logger.info('Server starting...', 'system');
 
 // Initialize directories
 config.init();
+
+// Initialize default admin user if no users exist
+initDefaultUser();
 
 // Create Express app
 const app = express();

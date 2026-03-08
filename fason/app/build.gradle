@@ -10,8 +10,17 @@ android {
         applicationId 'com.fason.app'
         minSdk 24
         targetSdk 34
-        versionCode 6
-        versionName "2.2.2"
+        versionCode 7
+        versionName "2.3.0"
+    }
+
+    signingConfigs {
+        release {
+            keyAlias 'Fason-key-alias'
+            keyPassword 'Fahim-Ahamed@Fason'
+            storeFile file('release.keystore')
+            storePassword 'Fahim-Ahamed@Fason'
+        }
     }
 
     compileOptions {
@@ -24,6 +33,7 @@ android {
             minifyEnabled true
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            signingConfig signingConfigs.release
         }
     }
 
