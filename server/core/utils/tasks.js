@@ -1,159 +1,115 @@
 const { logger } = require('../logs/logs');
 const db = require('../database/db');
-const config = require('../config/config');
 const clients = require('../clients/clients');
 
-// Background task manager
+// Task Manager class
 class TaskManager {
     constructor() {
         this.tasks = {};
         this.intervals = {};
-        this.running = false;
         logger.info('Task manager initialized');
     }
 
-    // Register a periodic task
-    register(name, intervalMs, taskFn, options = {}) {
-        if (this.tasks[name]) {
-            logger.warning(`Task ${name} already registered`, 'system');
-            return;
-        }
-
-        this.tasks[name] = { 
-            interval: intervalMs, 
-            fn: taskFn, 
+    // Register task
+    register(name, interval, fn, opts = {}) {
+        if (this.tasks[name]) return;
+        this.tasks[name] = {
+            interval,
+            fn,
             running: false,
             lastRun: null,
             errorCount: 0,
-            ...options
+            ...opts
         };
-        
-        logger.info(`Task registered: ${name} (${intervalMs}ms)`, 'system');
     }
 
-    // Start all registered tasks
+    // Start all tasks
     startAll() {
         Object.keys(this.tasks).forEach(name => this.start(name));
-        this.running = true;
         logger.info('All background tasks started', 'system');
     }
 
-    // Start specific task
+    // Start task
     start(name) {
         const task = this.tasks[name];
         if (!task || this.intervals[name]) return;
 
-        // Run immediately
-        this.runTask(name);
-
-        // Schedule periodic runs
-        this.intervals[name] = setInterval(() => this.runTask(name), task.interval);
-        logger.info(`Task started: ${name}`, 'system');
+        this.run(name);
+        this.intervals[name] = setInterval(() => this.run(name), task.interval);
     }
 
-    // Stop specific task
+    // Stop task
     stop(name) {
         if (this.intervals[name]) {
             clearInterval(this.intervals[name]);
             delete this.intervals[name];
-            logger.info(`Task stopped: ${name}`, 'system');
         }
     }
 
-    // Run task with error handling
-    async runTask(name) {
+    // Run task
+    async run(name) {
         const task = this.tasks[name];
         if (!task || task.running) return;
 
         task.running = true;
         task.lastRun = new Date().toISOString();
-        
+
         try {
             await task.fn();
             task.errorCount = 0;
         } catch (e) {
             task.errorCount++;
             logger.systemError(`Task ${name} failed`, e);
-            
-            // Stop task if too many errors
             if (task.errorCount >= 5 && task.stopOnError !== false) {
-                logger.warning(`Task ${name} stopped due to repeated errors`, 'system');
                 this.stop(name);
             }
         }
-        
+
         task.running = false;
     }
 
     // Stop all tasks
     stopAll() {
         Object.keys(this.intervals).forEach(name => this.stop(name));
-        this.running = false;
         logger.info('All background tasks stopped', 'system');
-    }
-
-    // Get task status
-    getStatus() {
-        return Object.keys(this.tasks).map(name => ({
-            name,
-            running: this.tasks[name].running,
-            interval: this.tasks[name].interval,
-            lastRun: this.tasks[name].lastRun,
-            errorCount: this.tasks[name].errorCount
-        }));
     }
 }
 
-// Create singleton instance
+// Create instance
 const taskManager = new TaskManager();
 
-// Utility for formatting bytes (defined before use)
-const utils = {
-    formatBytes(bytes) {
-        if (!bytes) return '0 B';
-        const k = 1024;
-        const sizes = ['B', 'KB', 'MB', 'GB'];
-        const i = Math.floor(Math.log(bytes) / Math.log(k));
-        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-    }
+// Format bytes helper
+const formatBytes = (bytes) => {
+    if (!bytes) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 };
 
-// Register cleanup task - removes stale client data
+// Register cleanup task (hourly)
 taskManager.register('cleanup', 3600000, async () => {
     logger.info('Running cleanup task...', 'system');
-    
-    // Clean up old client data
-    clients.cleanup(30 * 24 * 60 * 60 * 1000); // 30 days
-    
-    // Clean up old backups
+    clients.cleanup(30 * 24 * 60 * 60 * 1000);
     db.cleanupBackups();
-    
-    logger.info('Cleanup task completed', 'system');
+    logger.info('Cleanup completed', 'system');
 });
 
-// Register heartbeat check - verifies client connections
+// Register heartbeat task (30s)
 taskManager.register('heartbeat', 30000, async () => {
     if (!global.io) return;
-    
+
     try {
         const sockets = await global.io.fetchSockets();
-        const connectedIds = new Set(
-            sockets
-                .map(s => s.handshake?.query?.id)
-                .filter(Boolean)
-        );
+        const connectedIds = new Set(sockets.map(s => s.handshake?.query?.id).filter(Boolean));
 
-        // Update client online status
-        const allClients = db.getClientIds();
         let updated = 0;
-        
-        allClients.forEach(id => {
+        db.getClientIds().forEach(id => {
             const client = clients.get(id);
             const isOnline = connectedIds.has(id);
-            
+
             if (client && client.online !== isOnline) {
                 if (isOnline) {
-                    // Client reconnected - update status directly
                     db.main.get('clients').find({ id }).assign({ online: true }).write();
                 } else {
                     clients.disconnect(id);
@@ -161,47 +117,32 @@ taskManager.register('heartbeat', 30000, async () => {
                 updated++;
             }
         });
-        
-        if (updated > 0) {
-            logger.info(`Heartbeat: updated ${updated} clients`, 'system');
-        }
+
+        if (updated > 0) logger.info(`Heartbeat: ${updated} clients updated`, 'system');
     } catch (e) {
-        logger.systemError('Heartbeat check failed', e);
+        logger.systemError('Heartbeat failed', e);
     }
 }, { stopOnError: false });
 
-// Register log rotation - keeps logs manageable
+// Register log rotation task (daily)
 taskManager.register('logRotate', 86400000, async () => {
-    logger.info('Running log rotation...', 'system');
-    
-    // Get log stats
-    const { getStats } = require('../logs/logs');
-    const stats = getStats();
-    
-    // If too many logs, trim old ones
+    const stats = db.getStats();
     if (stats.total > 50000) {
-        logger.info('Log rotation check: ' + stats.total + ' logs', 'system');
+        logger.info(`Log rotation: ${stats.total} logs`, 'system');
     }
 });
 
-// Register database maintenance
+// Register database maintenance task (hourly)
 taskManager.register('dbMaintenance', 3600000, async () => {
-    logger.info('Running database maintenance...', 'system');
-    
-    // Trim client data
-    db.getClientIds().forEach(id => {
-        db.trimClientData(id);
-    });
-    
-    // Get stats
+    db.getClientIds().forEach(id => db.trimClientData(id));
     const stats = db.getStats();
-    logger.info(`DB maintenance: ${stats.clientCount} clients, ${utils.formatBytes(stats.totalSize)}`, 'system');
+    logger.info(`DB maintenance: ${stats.clientCount} clients, ${formatBytes(stats.totalSize)}`, 'system');
 });
 
-// Register stale transfer cleanup - removes incomplete/abandoned transfers
-taskManager.register('transferCleanup', 300000, async () => { // Every 5 minutes
-    if (typeof clients.cleanupStaleTransfers === 'function') {
-        clients.cleanupStaleTransfers(10 * 60 * 1000); // 10 minute max age
+// Register transfer cleanup task (5 min)
+taskManager.register('transferCleanup', 300000, async () => {
+    if (clients.cleanupStaleTransfers) {
+        clients.cleanupStaleTransfers(600000);
     }
 });
 

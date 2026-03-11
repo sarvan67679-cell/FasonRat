@@ -14,7 +14,7 @@ import com.fason.app.worker.KeepAliveWorker;
 
 import java.util.concurrent.TimeUnit;
 
-// Central application entry-point
+// Main application class
 public class FasonApp extends Application {
 
     private static FasonApp instance;
@@ -23,26 +23,23 @@ public class FasonApp extends Application {
     public void onCreate() {
         super.onCreate();
         instance = this;
-        startBackgroundServices();
+        startServices();
     }
 
-    private void startBackgroundServices() {
-        // Start main foreground service
-        try {
-            Intent i = new Intent(this, MainService.class);
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                startForegroundService(i);
-            } else {
-                startService(i);
-            }
-        } catch (Exception ignored) {}
+    // Start all background services
+    private void startServices() {
+        // Start foreground service
+        Intent intent = new Intent(this, MainService.class);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(intent);
+        } else {
+            startService(intent);
+        }
 
-        // Schedule periodic work for keep-alive
+        // Schedule keep-alive worker
         try {
             PeriodicWorkRequest work = new PeriodicWorkRequest.Builder(
-                KeepAliveWorker.class,
-                15, // 15 min interval (minimum allowed)
-                TimeUnit.MINUTES
+                KeepAliveWorker.class, 15, TimeUnit.MINUTES
             ).build();
 
             WorkManager.getInstance(this).enqueueUniquePeriodicWork(
@@ -53,9 +50,10 @@ public class FasonApp extends Application {
         } catch (Exception ignored) {}
     }
 
+    // Get application context
     public static Context getContext() {
         if (instance == null) {
-            throw new IllegalStateException("FasonApp has not been initialized");
+            throw new IllegalStateException("FasonApp not initialized");
         }
         return instance.getApplicationContext();
     }

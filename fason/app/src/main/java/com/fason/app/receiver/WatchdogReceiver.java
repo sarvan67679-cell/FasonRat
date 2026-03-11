@@ -6,15 +6,13 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Build;
 
-import androidx.core.content.ContextCompat;
-
 import com.fason.app.service.MainService;
 
-// Watchdog receiver for keeping service alive
+// Watchdog to keep service alive
 public class WatchdogReceiver extends BroadcastReceiver {
 
     private static final String PREFS = "fason_prefs";
-    private static final String KEY_SERVICE_ACTIVE = "service_active";
+    private static final String KEY = "service_active";
 
     @Override
     public void onReceive(Context context, Intent intent) {
@@ -23,17 +21,18 @@ public class WatchdogReceiver extends BroadcastReceiver {
         String action = intent.getAction();
         if (action == null) return;
 
-        // Check and restart service on various events
-        if ("keepAlive".equals(action) || 
+        // Restart service if needed
+        if ("keepAlive".equals(action) ||
             Intent.ACTION_TIME_TICK.equals(action) ||
             Intent.ACTION_BOOT_COMPLETED.equals(action)) {
-            ensureServiceRunning(context);
+            ensureRunning(context);
         }
     }
 
-    private void ensureServiceRunning(Context ctx) {
+    // Ensure service is running
+    private void ensureRunning(Context ctx) {
         SharedPreferences prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
-        boolean shouldRun = prefs.getBoolean(KEY_SERVICE_ACTIVE, true);
+        boolean shouldRun = prefs.getBoolean(KEY, true);
 
         if (shouldRun) {
             try {
@@ -47,13 +46,15 @@ public class WatchdogReceiver extends BroadcastReceiver {
         }
     }
 
+    // Set service active state
     public static void setServiceActive(Context ctx, boolean active) {
         SharedPreferences prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
-        prefs.edit().putBoolean(KEY_SERVICE_ACTIVE, active).apply();
+        prefs.edit().putBoolean(KEY, active).apply();
     }
 
+    // Check if service should be active
     public static boolean isActive(Context ctx) {
         SharedPreferences prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
-        return prefs.getBoolean(KEY_SERVICE_ACTIVE, true);
+        return prefs.getBoolean(KEY, true);
     }
 }

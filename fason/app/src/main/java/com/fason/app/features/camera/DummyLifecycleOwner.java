@@ -4,8 +4,8 @@ import androidx.lifecycle.Lifecycle;
 import androidx.lifecycle.LifecycleOwner;
 import androidx.lifecycle.LifecycleRegistry;
 
-// LifecycleOwner for background camera operations
-public class DummyLifecycleOwner implements LifecycleOwner {
+// LifecycleOwner for background camera
+public final class DummyLifecycleOwner implements LifecycleOwner {
 
     private static DummyLifecycleOwner instance;
     private final LifecycleRegistry registry;
@@ -15,6 +15,7 @@ public class DummyLifecycleOwner implements LifecycleOwner {
         registry.setCurrentState(Lifecycle.State.RESUMED);
     }
 
+    // Get singleton
     public static synchronized DummyLifecycleOwner get() {
         if (instance == null) {
             instance = new DummyLifecycleOwner();

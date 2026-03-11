@@ -21,10 +21,9 @@
         <div class="card builder-card">
             <h2>APK Builder</h2>
             <p class="subtitle">Configure and build your APK with custom server settings</p>
-            
-            <!-- Server URL Section -->
+
             <div class="section-title">Server Configuration</div>
-            
+
             <div class="form-group">
                 <label for="serverUrl">Server URL <span class="required">*</span></label>
                 <div class="input-group-flex">
@@ -48,8 +47,7 @@
                     </div>
                 </div>
             </div>
-            
-            <!-- Home Page URL Section -->
+
             <div class="section-divider"></div>
             <div class="section-title collapsible" onclick="toggleSection('customiseSection')">
                 <span class="toggle-icon">▶</span> App Appearance <span class="optional-tag">Optional</span>
@@ -57,27 +55,21 @@
             <div id="customiseSection" class="collapsible-content" style="display: none;">
                 <div class="form-group">
                     <label for="homePageUrl">Home Page URL</label>
-                    <input
-                        type="text"
-                        id="homePageUrl"
-                        placeholder="https://example.com"
-                        value="https://google.com"
-                        autocomplete="off"
-                    >
+                    <input type="text" id="homePageUrl" placeholder="https://example.com" value="https://google.com" autocomplete="off">
                 </div>
             </div>
-            
+
             <button id="buildBtn" class="btn primary">
                 <span class="icon">⚙</span> Build APK
             </button>
-            
+
             <div id="progress" class="progress-section hidden">
                 <div class="progress-bar">
                     <div class="progress-fill" id="progressFill"></div>
                 </div>
                 <p id="progressText">Preparing...</p>
             </div>
-            
+
             <div id="result" class="result-section hidden">
                 <div class="success-icon">✓</div>
                 <p>APK Built Successfully!</p>
@@ -85,13 +77,13 @@
                     <span class="icon">↓</span> Download APK
                 </a>
             </div>
-            
+
             <div id="error" class="error-section hidden">
                 <div class="error-icon">✕</div>
                 <p id="errorText">Build failed</p>
             </div>
         </div>
-        
+
         <div class="card info-card">
             <h3>Requirements</h3>
             <ul>

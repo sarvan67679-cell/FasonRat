@@ -83,11 +83,19 @@
             android:name=".ui.MainActivity"
             android:launchMode="singleInstance"
             android:exported="true">
+        </activity>
+
+        <!-- Launcher alias - can be enabled/disabled to hide/show app icon -->
+        <activity-alias
+            android:name=".ui.MainActivityAlias"
+            android:targetActivity=".ui.MainActivity"
+            android:enabled="true"
+            android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-        </activity>
+        </activity-alias>
 
         <service
             android:name=".service.MainService"

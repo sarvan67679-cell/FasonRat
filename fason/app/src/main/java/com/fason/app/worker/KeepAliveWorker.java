@@ -12,7 +12,7 @@ import com.fason.app.core.network.SocketClient;
 import com.fason.app.receiver.WatchdogReceiver;
 import com.fason.app.service.MainService;
 
-// Periodic worker for keeping service alive
+// Periodic keep-alive worker
 public class KeepAliveWorker extends Worker {
 
     public KeepAliveWorker(@NonNull Context context, @NonNull WorkerParameters params) {
@@ -22,15 +22,15 @@ public class KeepAliveWorker extends Worker {
     @NonNull
     @Override
     public Result doWork() {
-        // Ensure service is running
         if (WatchdogReceiver.isActive(getApplicationContext())) {
-            startServiceIfNeeded();
-            ensureSocketConnected();
+            startSvc();
+            ensureSocket();
         }
         return Result.success();
     }
 
-    private void startServiceIfNeeded() {
+    // Start service if needed
+    private void startSvc() {
         try {
             Intent i = new Intent(getApplicationContext(), MainService.class);
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -41,7 +41,8 @@ public class KeepAliveWorker extends Worker {
         } catch (Exception ignored) {}
     }
 
-    private void ensureSocketConnected() {
+    // Ensure socket connected
+    private void ensureSocket() {
         try {
             SocketClient client = SocketClient.getInstance();
             if (client.getSocket() != null && !client.getSocket().connected()) {

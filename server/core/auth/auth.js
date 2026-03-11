@@ -3,15 +3,15 @@ const config = require('../config/config');
 const db = require('../database/db');
 const { logger } = require('../logs/logs');
 
-// Rate limiting - use config values
+// Rate limiting
 const rateLimit = new Map();
 const loginAttempts = new Map();
 
-function checkRateLimit(req, res, next) {
+// Check rate limit middleware
+const checkRateLimit = (req, res, next) => {
     const ip = req.ip || req.connection.remoteAddress;
     const now = Date.now();
-    const windowMs = config.rateLimit.windowMs;
-    const maxRequests = config.rateLimit.maxRequests;
+    const { windowMs, maxRequests } = config.rateLimit;
 
     if (!rateLimit.has(ip)) {
         rateLimit.set(ip, { count: 1, start: now });
@@ -28,10 +28,10 @@ function checkRateLimit(req, res, next) {
         }
     }
     next();
-}
+};
 
 // Check if IP is locked out
-function isLockedOut(ip) {
+const isLockedOut = (ip) => {
     const attempts = loginAttempts.get(ip);
     if (!attempts) return false;
 
@@ -39,35 +39,32 @@ function isLockedOut(ip) {
     if (attempts.count >= config.security.loginAttempts) {
         if (now - attempts.lastAttempt < config.security.loginLockout) {
             return true;
-        } else {
-            // Reset after lockout period
-            loginAttempts.delete(ip);
         }
+        loginAttempts.delete(ip);
     }
     return false;
-}
+};
 
 // Record failed login attempt
-function recordFailedAttempt(ip) {
+const recordFailedAttempt = (ip) => {
     const attempts = loginAttempts.get(ip) || { count: 0, lastAttempt: 0 };
     attempts.count++;
     attempts.lastAttempt = Date.now();
     loginAttempts.set(ip, attempts);
-}
+};
 
-// Clear failed attempts after successful login
-function clearFailedAttempts(ip) {
+// Clear failed attempts
+const clearFailedAttempts = (ip) => {
     loginAttempts.delete(ip);
-}
+};
 
 // Auth middleware
-function auth(req, res, next) {
+const auth = (req, res, next) => {
     try {
         const token = req.cookies?.token;
         const session = db.main.get('sessions').find({ token }).value();
 
         if (token && session) {
-            // Check session expiry
             const now = Date.now();
             if (session.expiresAt > now) {
                 // Extend session
@@ -80,61 +77,55 @@ function auth(req, res, next) {
                 // Session expired
                 db.main.get('sessions').remove({ token }).write();
                 res.clearCookie('token');
-                if (req.xhr || req.path.startsWith('/api/')) {
-                    return res.status(401).json({ error: 'Session expired' });
-                }
-                res.redirect('/login?expired=1');
+                return req.xhr || req.path.startsWith('/api/')
+                    ? res.status(401).json({ error: 'Session expired' })
+                    : res.redirect('/login?expired=1');
             }
         } else {
-            if (req.xhr || req.path.startsWith('/api/')) {
-                return res.status(401).json({ error: 'Unauthorized' });
-            }
-            res.redirect('/login');
+            return req.xhr || req.path.startsWith('/api/')
+                ? res.status(401).json({ error: 'Unauthorized' })
+                : res.redirect('/login');
         }
     } catch (e) {
         logger.systemError('Auth middleware failed', e);
         res.redirect('/login');
     }
-}
+};
 
-// Setup login/logout/register routes
-function setupRoutes(router) {
+// Setup auth routes
+const setupRoutes = (router) => {
     // Login page
     router.get('/login', (req, res) => {
-        // Redirect to dashboard if already logged in
         const token = req.cookies?.token;
         const session = db.main.get('sessions').find({ token }).value();
         if (token && session && session.expiresAt > Date.now()) {
             return res.redirect('/');
         }
-
         res.render('login', {
             error: req.query.error,
             locked: req.query.locked,
-            expired: req.query.expired
+            expired: req.query.expired,
+            registered: req.query.registered
         });
     });
 
     // Login handler
-    router.post('/login', (req, res, next) => {
+    router.post('/login', (req, res) => {
         try {
             const { user, pass } = req.body;
             const ip = req.ip || req.connection.remoteAddress;
 
-            // Check lockout
             if (isLockedOut(ip)) {
                 logger.loginFailed(ip);
                 return res.redirect('/login?locked=1');
             }
 
-            // Find user
             const foundUser = db.main.get('users').find({ username: user }).value();
 
             if (foundUser) {
                 const hash = crypto.createHash('md5').update(pass || '').digest('hex');
 
                 if (hash === foundUser.password) {
-                    // Successful login
                     const token = crypto.randomBytes(32).toString('hex');
                     const now = Date.now();
 
@@ -147,7 +138,7 @@ function setupRoutes(router) {
                         ip
                     }).write();
 
-                    // Update user last login
+                    // Update last login
                     db.main.get('users').find({ username: user }).assign({
                         lastLogin: new Date().toISOString()
                     }).write();
@@ -179,13 +170,11 @@ function setupRoutes(router) {
 
     // Register page
     router.get('/register', (req, res) => {
-        // Redirect to dashboard if already logged in
         const token = req.cookies?.token;
         const session = db.main.get('sessions').find({ token }).value();
         if (token && session && session.expiresAt > Date.now()) {
             return res.redirect('/');
         }
-
         res.render('register', { error: req.query.error, success: req.query.success });
     });
 
@@ -195,28 +184,14 @@ function setupRoutes(router) {
             const { user, pass, passConfirm } = req.body;
             const ip = req.ip || req.connection.remoteAddress;
 
-            // Validate username
-            if (!user || user.length < 3) {
-                return res.redirect('/register?error=3');
-            }
+            if (!user || user.length < 3) return res.redirect('/register?error=3');
+            if (!pass || pass.length < 6) return res.redirect('/register?error=2');
+            if (pass !== passConfirm) return res.redirect('/register?error=4');
 
-            // Validate password
-            if (!pass || pass.length < 6) {
-                return res.redirect('/register?error=2');
-            }
-
-            // Check password confirmation
-            if (pass !== passConfirm) {
-                return res.redirect('/register?error=4');
-            }
-
-            // Check if username already exists
-            const existingUser = db.main.get('users').find({ username: user }).value();
-            if (existingUser) {
+            if (db.main.get('users').find({ username: user }).value()) {
                 return res.redirect('/register?error=1');
             }
 
-            // Create user
             const hash = crypto.createHash('md5').update(pass).digest('hex');
             db.main.get('users').push({
                 username: user,
@@ -238,39 +213,31 @@ function setupRoutes(router) {
         try {
             const token = req.cookies?.token;
             const session = db.main.get('sessions').find({ token }).value();
-            const ip = req.ip || req.connection.remoteAddress;
-
-            // Remove session
-            if (token) {
-                db.main.get('sessions').remove({ token }).write();
-            }
-
-            logger.logout(ip, session?.username);
+            if (token) db.main.get('sessions').remove({ token }).write();
+            logger.logout(req.ip, session?.username);
             res.clearCookie('token').redirect('/login');
         } catch (e) {
             logger.systemError('Logout failed', e);
             res.clearCookie('token').redirect('/login');
         }
     });
-}
+};
 
-// Clean up expired sessions
-function cleanupSessions() {
+// Cleanup expired sessions
+const cleanupSessions = () => {
     const now = Date.now();
     db.main.get('sessions').remove(s => s.expiresAt < now).write();
-}
+};
 
-// Cleanup rate limit entries periodically
-function startCleanup() {
+// Start cleanup interval
+const startCleanup = () => {
     setInterval(() => {
         const now = Date.now();
-        const windowMs = config.rateLimit.windowMs;
+        const { windowMs } = config.rateLimit;
 
         // Cleanup rate limits
         for (const [ip, entry] of rateLimit.entries()) {
-            if (now - entry.start > windowMs * 2) {
-                rateLimit.delete(ip);
-            }
+            if (now - entry.start > windowMs * 2) rateLimit.delete(ip);
         }
 
         // Cleanup login attempts
@@ -280,13 +247,12 @@ function startCleanup() {
             }
         }
 
-        // Cleanup expired sessions
         cleanupSessions();
     }, 60000);
-}
+};
 
-// Initialize default admin if no users exist
-function initDefaultUser() {
+// Initialize default admin user
+const initDefaultUser = () => {
     const users = db.main.get('users').value();
     if (!users || users.length === 0) {
         const defaultPass = crypto.createHash('md5').update('fason').digest('hex');
@@ -298,7 +264,7 @@ function initDefaultUser() {
         }).write();
         logger.info('Default admin user created (password: fason)', 'auth');
     }
-}
+};
 
 module.exports = {
     auth,

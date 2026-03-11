@@ -18,7 +18,6 @@
     </nav>
 
     <main class="container">
-        <!-- Statistics -->
         <% if (typeof stats !== 'undefined') { %>
         <div class="stats-grid">
             <div class="stat-card">
@@ -43,7 +42,7 @@
             </div>
         </div>
         <% } %>
-        
+
         <div class="card logs-card">
             <div class="card-header">
                 <h2>System Logs</h2>
@@ -52,8 +51,7 @@
                     <button id="clearBtn" class="btn danger">✕ Clear All</button>
                 </div>
             </div>
-            
-            <!-- Filter Bar -->
+
             <form class="filter-bar" method="GET" action="/logs">
                 <select name="type">
                     <option value="">All Types</option>
@@ -82,7 +80,7 @@
                 <button type="submit" class="btn primary">Filter</button>
                 <a href="/logs" class="btn">Reset</a>
             </form>
-            
+
             <div class="logs-container">
                 <% if (logs.length === 0) { %>
                     <div class="empty">
