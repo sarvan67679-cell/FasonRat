@@ -13,9 +13,6 @@ const { initDefaultUser } = require('./core/auth/auth');
 console.log('Fason Control Panel - Starting...');
 logger.info('Server starting...', 'system');
 
-// Setup directories
-config.init();
-
 // Create default admin
 initDefaultUser();
 
