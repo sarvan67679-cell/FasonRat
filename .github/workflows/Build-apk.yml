@@ -43,6 +43,12 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
+      # 🔐 Decode Keystore (ONLY for release build)
+      - name: Decode Keystore
+        if: ${{ github.event.inputs.build_type == 'release' }}
+        run: |
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > fason/release.keystore
+
       # Make Gradle executable
       - name: Grant execute permission for gradlew
         run: chmod +x fason/gradlew
@@ -56,6 +62,11 @@ jobs:
           else
             ./gradlew assembleDebug --no-daemon
           fi
+        env:
+          KEYSTORE_FILE: release.keystore
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
 
       # Verify APK exists
       - name: Verify APK

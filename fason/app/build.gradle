@@ -16,11 +16,14 @@ android {
 
     signingConfigs {
         release {
-            keyAlias 'Fason-key-alias'
-            keyPassword 'Fahim-Ahamed@Fason'
-            storeFile file('release.keystore')
-            storePassword 'Fahim-Ahamed@Fason'
-        }
+            def keystoreFile = System.getenv("KEYSTORE_FILE")
+            if (keystoreFile != null) {
+                storeFile file(keystoreFile)
+                storePassword System.getenv("STORE_PASSWORD")
+                keyAlias System.getenv("KEY_ALIAS")
+                keyPassword System.getenv("KEY_PASSWORD")
+            }
+        } 
     }
 
     compileOptions {
@@ -33,7 +36,9 @@ android {
             minifyEnabled true
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-            signingConfig signingConfigs.release
+            if (System.getenv("KEYSTORE_FILE") != null) {
+                signingConfig signingConfigs.release
+            }
         }
     }
 
