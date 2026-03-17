@@ -17,7 +17,6 @@ on:
         default: true
         type: boolean
 
-# Setup permission
 permissions:
   contents: write
 
@@ -26,34 +25,29 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # Checkout source code
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      # Setup Java (Required for Android)
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 17
 
-      # Setup Android SDK
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      # 🔐 Decode Keystore (ONLY for release build)
+      # keystore path
       - name: Decode Keystore
         if: ${{ github.event.inputs.build_type == 'release' }}
         run: |
-          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > fason/release.keystore
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > fason/app/release.keystore
 
-      # Make Gradle executable
       - name: Grant execute permission for gradlew
         run: chmod +x fason/gradlew
 
-      # Build APK
       - name: Build APK
         run: |
           cd fason
@@ -68,7 +62,6 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
           STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
 
-      # Verify APK exists
       - name: Verify APK
         run: |
           if [ "${{ github.event.inputs.build_type }}" = "release" ]; then
@@ -87,7 +80,6 @@ jobs:
           echo "APK_SIZE=$APK_SIZE" >> $GITHUB_ENV
           echo "APK_PATH=$APK_PATH" >> $GITHUB_ENV
 
-      # Upload APK as artifact
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
@@ -95,7 +87,6 @@ jobs:
           path: ${{ env.APK_PATH }}
           retention-days: 30
 
-      # Optional: Commit APK to repository
       - name: Commit APK to repository
         if: ${{ github.event.inputs.commit_to_repo }}
         run: |
@@ -116,15 +107,3 @@ jobs:
             git push origin HEAD:${{ github.ref }}
             echo "✅ APK committed successfully."
           fi
-
-      # Build Summary
-      - name: Build Summary
-        run: |
-          echo "## 📦 APK Build Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "✅ **Status:** Success" >> $GITHUB_STEP_SUMMARY
-          echo "- **Build Type:** ${{ github.event.inputs.build_type }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **APK Size:** $APK_SIZE" >> $GITHUB_STEP_SUMMARY
-          echo "- **Artifact Name:** Fason-${{ github.event.inputs.build_type }}-apk" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Download the APK from the **Artifacts** section of this workflow run." >> $GITHUB_STEP_SUMMARY
