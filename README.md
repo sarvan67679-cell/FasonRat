@@ -120,11 +120,6 @@ cd fason
 # Release build (signed with release.keystore)
 ./gradlew assembleRelease
 ```
-
-The release APK is signed with the included `release.keystore`:
-- **Alias:** `Fason-key-alias`
-- **Password:** `Fahim-Ahamed@Fason`
-
 </details>
 
 <details>
@@ -197,41 +192,6 @@ public class Config {
     public static final String HOME_PAGE_URL = "https://google.com";
 }
 ```
-
-### Build Config (`fason/app/build.gradle`)
-```gradle
-android {
-    namespace 'com.fason.app'
-    compileSdk 35
-
-    defaultConfig {
-        applicationId 'com.fason.app'
-        minSdk 24
-        targetSdk 35
-        versionCode 8
-        versionName "2.3.1"
-    }
-
-    signingConfigs {
-        release {
-            keyAlias 'Fason-key-alias'
-            keyPassword 'Fahim-Ahamed@Fason'
-            storeFile file('release.keystore')
-            storePassword 'Fahim-Ahamed@Fason'
-        }
-    }
-
-    buildTypes {
-        release {
-            minifyEnabled true
-            shrinkResources true
-            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-            signingConfig signingConfigs.release
-        }
-    }
-}
-```
-
 </details>
 
 <details>
