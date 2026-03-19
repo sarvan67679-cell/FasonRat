@@ -1,18 +1,9 @@
-const path = require('path');
+// Main Configuration Module
 
-// Main config
 const config = {
-    // Server
     port: 22533,
     debug: false,
 
-    // Data paths
-    dbPath: path.join(__dirname, '../../data'),
-    downloadsPath: path.join(__dirname, '../../data/clients/downloads'),
-    photosPath: path.join(__dirname, '../../data/clients/photos'),
-    recordingsPath: path.join(__dirname, '../../data/clients/recordings'),
-
-    // Message codes
     msg: {
         camera: '0xCA',
         files: '0xFI',
@@ -31,7 +22,6 @@ const config = {
         deviceInfo: '0xIF'
     },
 
-    // Limits
     limits: {
         maxClients: 500,
         maxDownloads: 100,
@@ -45,7 +35,6 @@ const config = {
         maxFileSize: 50 * 1024 * 1024
     },
 
-    // Socket
     socket: {
         pingInterval: 25000,
         pingTimeout: 60000,
@@ -54,36 +43,35 @@ const config = {
         cors: { origin: '*', methods: ['GET', 'POST'] }
     },
 
-    // Rate limit
     rateLimit: {
         windowMs: 60000,
         maxRequests: 100
     },
 
-    // APK build
     build: {
-        timeout: 600000,
-        defaultUrl: 'http://127.0.0.1:22533',
-        defaultHome: 'https://google.com',
-        apkToolPath: path.join(__dirname, '../../app/factory/apktool.jar'),
-        signerPath: path.join(__dirname, '../../app/factory/uber-apk-signer.jar'),
-        baseApkPath: path.join(__dirname, '../../app/factory/baseApp/Fason.apk'),
-        decompilePath: path.join(__dirname, '../../app/factory/decompiled')
+        timeout: 600000
     },
 
-    // Dynamic paths
-    getProgressFile() { return path.join(this.dbPath, 'build_progress.json'); },
-    getBuiltApkPath() { return path.join(this.dbPath, 'built_apks'); },
-    getOutputApk() { return path.join(this.getBuiltApkPath(), 'build.apk'); },
-    getSignedApkName() { return 'Fason.apk'; },
-    getSignedApk() { return path.join(this.getBuiltApkPath(), this.getSignedApkName()); },
-
-    // Security
     security: {
         sessionTimeout: 24 * 60 * 60 * 1000,
         loginAttempts: 5,
         loginLockout: 15 * 60 * 1000
+    },
+
+    logger: {
+        maxDbLogs: 10000,
+        files: {
+            maxSize: '20m',
+            errorRetention: '30d',
+            combinedRetention: '14d',
+            appRetention: '7d',
+            debugRetention: '3d'
+        },
+        console: {
+            enabled: true,
+            colorize: true
+        }
     }
 };
 
-module.exports = config;
+export default config;

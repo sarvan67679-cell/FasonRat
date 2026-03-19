@@ -38,7 +38,8 @@ jobs:
       # Ensure required directories exist
       - name: Prepare directories
         run: |
-          mkdir -p server/database/{clients,client_downloads,client_photos}
+          mkdir -p server/data/{clients,backups,built_apks}
+          mkdir -p server/data/clients/{downloads,photos,recordings}
 
       # Install Cloudflare Tunnel (cloudflared)
       - name: Install cloudflared
@@ -49,7 +50,7 @@ jobs:
       # Start server and expose via Cloudflare Quick Tunnel
       - name: Start server and Cloudflare tunnel
         run: |
-          node server/init.js &
+          node server/fason.js &
           echo "SERVER_PID=$!" >> $GITHUB_ENV
           sleep 5
 
@@ -95,7 +96,7 @@ jobs:
 
             if ! curl -s http://localhost:${{ env.SERVER_PORT }}/login > /dev/null; then
               echo "⚠️ Server not responding. Restarting..."
-              node server/init.js &
+              node server/fason.js &
               sleep 5
             fi
           done
@@ -106,6 +107,6 @@ jobs:
       - name: Cleanup
         if: always()
         run: |
-          pkill -f "node server/init.js" || true
+          pkill -f "node server/fason.js" || true
           pkill -f cloudflared || true
           echo "✅ Cleanup complete."

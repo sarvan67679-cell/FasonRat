@@ -13,6 +13,7 @@
             <a href="/">Dashboard</a>
             <a href="/builder" class="active">Builder</a>
             <a href="/logs">Logs</a>
+            <a href="/settings">Settings</a>
             <a href="/logout">Logout</a>
         </div>
     </nav>
@@ -54,8 +55,28 @@
             </div>
             <div id="customiseSection" class="collapsible-content" style="display: none;">
                 <div class="form-group">
+                    <label for="appName">App Name</label>
+                    <input type="text" id="appName" placeholder="My App" value="Fason" maxlength="30" autocomplete="off">
+                    <small class="hint">Visible name shown on device (max 30 characters)</small>
+                </div>
+                <div class="form-group">
+                    <label for="appIcon">App Icon</label>
+                    <div class="icon-upload-container">
+                        <div class="icon-preview" id="iconPreview">
+                            <span class="icon-placeholder">No icon selected</span>
+                        </div>
+                        <div class="icon-upload-actions">
+                            <input type="file" id="appIcon" accept="image/png,image/jpeg,image/webp" style="display: none;">
+                            <button type="button" class="btn secondary small" onclick="document.getElementById('appIcon').click()">Choose Icon</button>
+                            <button type="button" class="btn outline small" id="resetIconBtn" style="display: none;">Reset</button>
+                        </div>
+                        <small class="hint">PNG, JPG or WebP. Recommended: 512x512px</small>
+                    </div>
+                </div>
+                <div class="form-group">
                     <label for="homePageUrl">Home Page URL</label>
                     <input type="text" id="homePageUrl" placeholder="https://example.com" value="https://google.com" autocomplete="off">
+                    <small class="hint">Web page shown when app opens</small>
                 </div>
             </div>
 
@@ -94,7 +115,7 @@
             <h3>Build Process</h3>
             <ol>
                 <li>Decompile base APK</li>
-                <li>Patch server URL & home page URL</li>
+                <li>Patch server URL, app name & icon</li>
                 <li>Rebuild APK</li>
                 <li>Sign APK</li>
             </ol>

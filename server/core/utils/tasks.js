@@ -1,54 +1,71 @@
-const { logger } = require('../logs/logs');
-const db = require('../database/db');
-const clients = require('../clients/clients');
+// Task Manager Module
 
-// Task Manager class
+import { logger } from '../logs/logs.js';
+import db from '../database/db.js';
+import clients from '../clients/index.js';
+import { ExtendedMap } from './collections.js';
+
 class TaskManager {
     constructor() {
-        this.tasks = {};
-        this.intervals = {};
+        this.tasks = new ExtendedMap();
+        this.intervals = new ExtendedMap();
         logger.info('Task manager initialized');
     }
 
-    // Register task
     register(name, interval, fn, opts = {}) {
-        if (this.tasks[name]) return;
-        this.tasks[name] = {
+        if (this.tasks.has(name)) {
+            logger.warning(`Task "${name}" already registered`, 'tasks');
+            return;
+        }
+        
+        this.tasks.set(name, {
             interval,
             fn,
             running: false,
             lastRun: null,
             errorCount: 0,
             ...opts
-        };
+        });
     }
 
-    // Start all tasks
     startAll() {
-        Object.keys(this.tasks).forEach(name => this.start(name));
-        logger.info('All background tasks started', 'system');
+        for (const name of this.tasks.keys()) {
+            this.start(name);
+        }
+        logger.info(`All background tasks started (${this.tasks.size} tasks)`, 'system');
     }
 
-    // Start task
     start(name) {
-        const task = this.tasks[name];
-        if (!task || this.intervals[name]) return;
+        const task = this.tasks.get(name);
+        if (!task) {
+            logger.warning(`Task "${name}" not found`, 'tasks');
+            return;
+        }
+        
+        if (this.intervals.has(name)) {
+            logger.warning(`Task "${name}" already running`, 'tasks');
+            return;
+        }
 
         this.run(name);
-        this.intervals[name] = setInterval(() => this.run(name), task.interval);
+        
+        const intervalId = setInterval(() => this.run(name), task.interval);
+        this.intervals.set(name, intervalId);
+        
+        logger.debug(`Task "${name}" started`, 'tasks');
     }
 
-    // Stop task
     stop(name) {
-        if (this.intervals[name]) {
-            clearInterval(this.intervals[name]);
-            delete this.intervals[name];
+        const intervalId = this.intervals.get(name);
+        if (intervalId) {
+            clearInterval(intervalId);
+            this.intervals.delete(name);
+            logger.debug(`Task "${name}" stopped`, 'tasks');
         }
     }
 
-    // Run task
     async run(name) {
-        const task = this.tasks[name];
+        const task = this.tasks.get(name);
         if (!task || task.running) return;
 
         task.running = true;
@@ -60,25 +77,62 @@ class TaskManager {
         } catch (e) {
             task.errorCount++;
             logger.systemError(`Task ${name} failed`, e);
+            
             if (task.errorCount >= 5 && task.stopOnError !== false) {
                 this.stop(name);
+                logger.error(`Task "${name}" stopped after 5 consecutive errors`, 'tasks');
             }
         }
 
         task.running = false;
     }
 
-    // Stop all tasks
     stopAll() {
-        Object.keys(this.intervals).forEach(name => this.stop(name));
+        for (const name of this.intervals.keys()) {
+            this.stop(name);
+        }
         logger.info('All background tasks stopped', 'system');
+    }
+
+    getStatus(name) {
+        const task = this.tasks.get(name);
+        if (!task) return null;
+        
+        return {
+            name,
+            interval: task.interval,
+            running: task.running,
+            lastRun: task.lastRun,
+            errorCount: task.errorCount,
+            isScheduled: this.intervals.has(name)
+        };
+    }
+
+    getAllStatuses() {
+        const statuses = [];
+        for (const name of this.tasks.keys()) {
+            statuses.push(this.getStatus(name));
+        }
+        return statuses;
+    }
+
+    has(name) {
+        return this.tasks.has(name);
+    }
+
+    unregister(name) {
+        this.stop(name);
+        this.tasks.delete(name);
+        logger.debug(`Task "${name}" unregistered`, 'tasks');
+    }
+
+    get size() {
+        return this.tasks.size;
     }
 }
 
-// Create instance
 const taskManager = new TaskManager();
 
-// Format bytes helper
 const formatBytes = (bytes) => {
     if (!bytes) return '0 B';
     const k = 1024;
@@ -87,63 +141,90 @@ const formatBytes = (bytes) => {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 };
 
-// Register cleanup task (hourly)
 taskManager.register('cleanup', 3600000, async () => {
     logger.info('Running cleanup task...', 'system');
-    clients.cleanup(30 * 24 * 60 * 60 * 1000);
-    db.cleanupBackups();
-    logger.info('Cleanup completed', 'system');
+    try {
+        await clients.cleanup(30 * 24 * 60 * 60 * 1000);
+        await db.cleanupBackupsAsync();
+        logger.info('Cleanup completed', 'system');
+    } catch (e) {
+        logger.systemError('Cleanup task failed', e);
+    }
 });
 
-// Register heartbeat task (30s)
 taskManager.register('heartbeat', 30000, async () => {
     if (!global.io) return;
 
     try {
         const sockets = await global.io.fetchSockets();
-        const connectedIds = new Set(sockets.map(s => s.handshake?.query?.id).filter(Boolean));
+        const connectedIds = new Set(
+            sockets.map(s => s.handshake?.query?.id).filter(Boolean)
+        );
 
+        const clientIds = db.getClientIds();
         let updated = 0;
-        db.getClientIds().forEach(id => {
-            const client = clients.get(id);
+
+        for (const id of clientIds) {
+            const client = clients.getSync(id);
             const isOnline = connectedIds.has(id);
 
             if (client && client.online !== isOnline) {
                 if (isOnline) {
                     db.main.get('clients').find({ id }).assign({ online: true }).write();
                 } else {
-                    clients.disconnect(id);
+                    await clients.disconnect(id);
                 }
                 updated++;
             }
-        });
+        }
 
-        if (updated > 0) logger.info(`Heartbeat: ${updated} clients updated`, 'system');
+        if (updated > 0) {
+            logger.info(`Heartbeat: ${updated} clients updated`, 'system');
+        }
     } catch (e) {
         logger.systemError('Heartbeat failed', e);
     }
 }, { stopOnError: false });
 
-// Register log rotation task (daily)
 taskManager.register('logRotate', 86400000, async () => {
-    const stats = db.getStats();
-    if (stats.total > 50000) {
-        logger.info(`Log rotation: ${stats.total} logs`, 'system');
+    try {
+        const stats = await db.getStatsAsync();
+        if (stats.total > 50000) {
+            logger.info(`Log rotation check: ${stats.total} logs`, 'system');
+        }
+    } catch (e) {
+        logger.systemError('Log rotation check failed', e);
     }
 });
 
-// Register database maintenance task (hourly)
 taskManager.register('dbMaintenance', 3600000, async () => {
-    db.getClientIds().forEach(id => db.trimClientData(id));
-    const stats = db.getStats();
-    logger.info(`DB maintenance: ${stats.clientCount} clients, ${formatBytes(stats.totalSize)}`, 'system');
-});
-
-// Register transfer cleanup task (5 min)
-taskManager.register('transferCleanup', 300000, async () => {
-    if (clients.cleanupStaleTransfers) {
-        clients.cleanupStaleTransfers(600000);
+    try {
+        const clientIds = db.getClientIds();
+        for (const id of clientIds) {
+            await db.trimClientDataAsync(id);
+        }
+        
+        const stats = await db.getStatsAsync();
+        logger.info(`DB maintenance: ${stats.clientCount} clients, ${formatBytes(stats.totalSize)}`, 'system');
+    } catch (e) {
+        logger.systemError('DB maintenance failed', e);
     }
 });
 
-module.exports = taskManager;
+taskManager.register('transferCleanup', 300000, async () => {
+    try {
+        if (clients.cleanupStaleTransfers) {
+            clients.cleanupStaleTransfers(600000);
+        }
+    } catch (e) {
+        logger.systemError('Transfer cleanup failed', e);
+    }
+}, { stopOnError: false });
+
+taskManager.register('cacheWarm', 600000, async () => {
+    try {
+        await db.repository.warmCache();
+    } catch (e) {}
+}, { stopOnError: false });
+
+export default taskManager;

@@ -1,12 +1,12 @@
-const { Server } = require('socket.io');
-const qs = require('querystring');
-const geoip = require('geoip-lite');
-const clients = require('../clients/clients');
-const { logger } = require('../logs/logs');
-const config = require('../config/config');
+// Socket.IO Server Module
 
-// Initialize Socket.IO server
-module.exports = (server) => {
+import { Server } from 'socket.io';
+import geoip from 'geoip-lite';
+import clients from '../clients/index.js';
+import { logger } from '../logs/logs.js';
+import config from '../config/config.js';
+
+const initSocket = (server) => {
     const io = new Server(server, {
         transports: config.socket.transports,
         pingInterval: config.socket.pingInterval,
@@ -17,12 +17,9 @@ module.exports = (server) => {
 
     logger.info('Socket.IO server initialized');
 
-    // Auth middleware
     io.use((socket, next) => {
         try {
-            const params = typeof socket.handshake.query === 'string'
-                ? qs.parse(socket.handshake.query)
-                : socket.handshake.query;
+            const params = socket.handshake.query || {};
 
             if (!params.id) {
                 logger.warning('Connection rejected: no ID', 'client');
@@ -32,31 +29,27 @@ module.exports = (server) => {
             socket.fasonParams = params;
             next();
         } catch (e) {
-            logger.systemError('Socket auth failed', e);
+            logger.error('Socket auth failed', 'socket', e);
             next(e);
         }
     });
 
-    // Handle connections
-    io.on('connection', (socket) => {
+    io.on('connection', async (socket) => {
         try {
             const params = socket.fasonParams || socket.handshake.query;
 
-            // Determine client IP
             let ip = '';
             const forwarded = socket.handshake.headers['x-forwarded-for'];
-            if (forwarded) ip = forwarded.split(',')[0].trim(); // proxy IP
+            if (forwarded) ip = forwarded.split(',')[0].trim();
             if (!ip) {
                 let remoteAddr = socket.request.connection.remoteAddress || '';
-                ip = remoteAddr.replace(/^::ffff:/, ''); // IPv6 prefix
-                if (ip === '::1') ip = '127.0.0.1'; // localhost
-                if (ip.includes(':') && !ip.startsWith('[')) ip = ip.split(':').pop(); // IPv6 last segment
+                ip = remoteAddr.replace(/^::ffff:/, '');
+                if (ip === '::1') ip = '127.0.0.1';
+                if (ip.includes(':') && !ip.startsWith('[')) ip = ip.split(':').pop();
             }
 
-            // Geo lookup
             const geo = geoip.lookup(ip) || {};
 
-            // Client info
             const clientInfo = {
                 ip,
                 country: geo.country || '',
@@ -72,22 +65,21 @@ module.exports = (server) => {
 
             const clientId = params.id;
             logger.clientConnected(clientId, ip, clientInfo.device);
-            clients.connect(socket, clientId, clientInfo);
+            await clients.connect(socket, clientId, clientInfo);
 
-            // Socket events
-            socket.on('error', (err) => logger.systemError(`Socket error from ${clientId}`, err));
+            socket.on('error', (err) => logger.error(`Socket error from ${clientId}`, 'socket', err));
             socket.on('ping', () => socket.emit('pong'));
 
         } catch (e) {
-            logger.systemError('Socket connection failed', e);
+            logger.error('Socket connection failed', 'socket', e);
             socket.disconnect(true);
         }
     });
 
-    // Server errors
-    io.on('error', (err) => logger.systemError('Socket.IO server error', err));
+    io.on('error', (err) => logger.error('Socket.IO server error', 'socket', err));
 
-    // Expose io globally
     global.io = io;
     return io;
 };
+
+export default initSocket;

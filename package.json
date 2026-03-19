@@ -1,22 +1,27 @@
 {
   "name": "fason",
-  "version": "2.3.1",
+  "version": "2.3.2",
   "description": "Fason - Modern Android Remote Management Suite",
-  "main": "index.js",
+  "main": "server/fason.js",
+  "type": "module",
   "scripts": {
-    "test": "node index.js",
-    "start": "node index.js",
-    "dev": "node server/init.js"
+    "start": "node server/fason.js",
+    "dev": "node server/fason.js"
   },
   "author": "Fahim Ahamed",
   "license": "MIT",
   "dependencies": {
+    "bcryptjs": "^3.0.3",
     "body-parser": "^1.19.0",
     "cookie-parser": "^1.4.4",
     "ejs": "^3.1.10",
     "express": "^4.17.1",
     "geoip-lite": "^1.3.7",
     "lowdb": "^1.0.0",
-    "socket.io": "^4.8.1"
+    "multer": "^2.1.1",
+    "sharp": "^0.34.5",
+    "socket.io": "^4.8.1",
+    "winston": "^3.19.0",
+    "winston-daily-rotate-file": "^5.0.0"
   }
 }

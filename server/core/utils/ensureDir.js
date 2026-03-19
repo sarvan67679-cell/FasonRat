@@ -1,10 +1,11 @@
-const fs = require('fs');
+// Directory Utility Module
 
-// Ensure directory exists
+import fs from 'fs';
+
 const ensureDir = (dir) => {
     if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true });
     }
 };
 
-module.exports = { ensureDir };
+export { ensureDir };

